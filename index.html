@@ -2,170 +2,251 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Pickleball Catcher Game</title>
+  <title>ピックルボールキャッチ</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
-      background: black;
+      background: url("背景(コート画像.png)") no-repeat center center;
+      background-size: cover;
+      font-family: "Comic Sans MS", "Arial", sans-serif;
     }
     canvas {
       display: block;
       margin: 0 auto;
-      background: url('bg.png') no-repeat center center;
-      background-size: cover;
+      background: transparent;
     }
-    #scoreboard {
+    #ui {
       position: absolute;
       top: 10px;
       left: 50%;
       transform: translateX(-50%);
-      color: white;
-      font-family: sans-serif;
-      font-size: 20px;
       text-align: center;
+      font-size: 28px;
+      color: #ff4081;
+      text-shadow: 2px 2px #fff;
     }
-    #retryButton {
-      display: none;
+    #score {
+      font-size: 36px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    #highScore {
+      font-size: 24px;
+      color: #333;
+    }
+    #lives {
+      font-size: 32px;
+      color: red;
+    }
+    #startButton, #retryButton {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      padding: 10px 20px;
-      font-size: 18px;
-      background: #ff4444;
-      color: white;
+      padding: 20px 40px;
+      font-size: 28px;
+      background: #ffcc00;
       border: none;
-      border-radius: 10px;
+      border-radius: 15px;
       cursor: pointer;
+      box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
+    }
+    #startButton:hover, #retryButton:hover {
+      background: #ffdd44;
     }
   </style>
 </head>
 <body>
-  <div id="scoreboard">
-    <div>スコア: <span id="score">0</span>　ハイスコア: <span id="highscore">0</span></div>
-    <div>ライフ: <span id="lives">♥♥♥</span></div>
+  <div id="ui">
+    <div id="score">スコア: 0</div>
+    <div id="highScore">ハイスコア: 0</div>
+    <div id="lives">♥ ♥ ♥</div>
   </div>
-  <button id="retryButton">リトライ</button>
-  <canvas id="gameCanvas"></canvas>
+  <button id="startButton">スタート！</button>
+  <button id="retryButton" style="display:none;">リトライ</button>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+  <!-- 音楽と効果音 -->
+  <audio id="bgm" src="background music.mp3" loop></audio>
+  <audio id="catchNormal" src="catch_normal.wav"></audio>
+  <audio id="catchRare" src="catch_rare.wav"></audio>
 
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
 
-    // 画像読み込み
-    const paddleImg = new Image(); paddleImg.src = "paddle.png";
+    const scoreDisplay = document.getElementById("score");
+    const highScoreDisplay = document.getElementById("highScore");
+    const livesDisplay = document.getElementById("lives");
+    const startButton = document.getElementById("startButton");
+    const retryButton = document.getElementById("retryButton");
+    const bgm = document.getElementById("bgm");
+    const catchNormal = document.getElementById("catchNormal");
+    const catchRare = document.getElementById("catchRare");
+
+    let gameInterval, speedInterval;
+    let score, lives, balls, player;
+    let running = false;
+
+    // localStorageからハイスコア読み込み
+    let highScore = localStorage.getItem("pickleHighScore") || 0;
+    highScoreDisplay.textContent = "ハイスコア: " + highScore;
+
     const ballImages = [
-      "pink.png",
-      "orange.png",
-      "lightblue.png",
-      "blue.png",
-      "green.png",
-      "yellow.png"
-    ].map(src => { let img = new Image(); img.src = src; return img; });
-    const rainbowImg = new Image(); rainbowImg.src = "rainbow.png";
+      "Regular1.png", "Regular2.png", "Regular3.png",
+      "Regular4.png", "Regular5.png", "Regular6.png"
+    ];
+    const rareBallImage = "Rainbow.png";
+    const paddleImageSrc = "Paddle.png";
 
-    // ゲーム状態
-    let paddle = { x: canvas.width/2 - 50, y: canvas.height - 80, width: 100, height: 20 };
-    let balls = [];
-    let score = 0;
-    let lives = 3;
-    let highscore = localStorage.getItem("pickleball_highscore") || 0;
-    let gameOver = false;
-    let speedFactor = 1;
+    const ballSize = 100; // 通常より約5倍
+    const paddleWidth = 230; // 2.3倍
+    const paddleHeight = 40;
 
-    document.getElementById("highscore").textContent = highscore;
+    let paddleImage = new Image();
+    paddleImage.src = paddleImageSrc;
 
     class Ball {
-      constructor(x, y, img, points, speedMult=1) {
+      constructor(x, y, speed, image, points, rare=false) {
         this.x = x;
         this.y = y;
-        this.size = 40;
-        this.img = img;
+        this.speed = speed;
+        this.image = new Image();
+        this.image.src = image;
         this.points = points;
-        this.speed = (2 + Math.random()*2) * speedMult;
+        this.rare = rare;
       }
-      update() { this.y += this.speed * speedFactor; }
-      draw() { ctx.drawImage(this.img, this.x, this.y, this.size, this.size); }
+      draw() {
+        ctx.drawImage(this.image, this.x, this.y, ballSize, ballSize);
+      }
+      update() {
+        this.y += this.speed;
+      }
+    }
+
+    function resetGame() {
+      score = 0;
+      lives = 3;
+      balls = [];
+      player = { x: canvas.width/2 - paddleWidth/2, y: canvas.height - 60, speed: 20 };
+      scoreDisplay.textContent = "スコア: 0";
+      livesDisplay.textContent = "♥ ♥ ♥";
     }
 
     function spawnBall() {
-      let x = Math.random() * (canvas.width - 40);
-      if (Math.random() < 0.1) { // 10%でレインボー
-        balls.push(new Ball(x, -40, rainbowImg, 10, 3));
+      const x = Math.random() * (canvas.width - ballSize);
+      let image, points, speed, rare;
+      if (Math.random() < 0.1) {
+        image = rareBallImage;
+        points = 10;
+        speed = 9;
+        rare = true;
       } else {
-        let img = ballImages[Math.floor(Math.random()*ballImages.length)];
-        balls.push(new Ball(x, -40, img, 1));
+        image = ballImages[Math.floor(Math.random() * ballImages.length)];
+        points = 1;
+        speed = 3 + Math.random() * 2;
+        rare = false;
       }
+      balls.push(new Ball(x, -ballSize, speed, image, points, rare));
     }
 
-    function update() {
-      if (gameOver) return;
-      balls.forEach(b => b.update());
+    function updateGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // キャッチ判定
-      balls.forEach((b, i) => {
-        if (b.y + b.size > paddle.y && b.x < paddle.x + paddle.width && b.x + b.size > paddle.x) {
-          score += b.points;
-          document.getElementById("score").textContent = score;
-          balls.splice(i,1);
-        }
-      });
+      ctx.drawImage(paddleImage, player.x, player.y, paddleWidth, paddleHeight);
 
-      // 取り逃し判定
-      balls.forEach((b, i) => {
-        if (b.y > canvas.height) {
+      balls.forEach((ball, i) => {
+        ball.update();
+        ball.draw();
+
+        if (
+          ball.y + ballSize > player.y &&
+          ball.x < player.x + paddleWidth &&
+          ball.x + ballSize > player.x
+        ) {
+          score += ball.points;
+          scoreDisplay.textContent = "スコア: " + score;
+          if (ball.rare) {
+            catchRare.currentTime = 0;
+            catchRare.play();
+          } else {
+            catchNormal.currentTime = 0;
+            catchNormal.play();
+          }
+          balls.splice(i, 1);
+        } else if (ball.y > canvas.height) {
+          balls.splice(i, 1);
           lives--;
-          document.getElementById("lives").textContent = "♥".repeat(lives);
-          balls.splice(i,1);
-          if (lives <= 0) endGame();
+          livesDisplay.textContent = "♥ ".repeat(lives);
+          if (lives <= 0) {
+            endGame();
+          }
         }
       });
-
-      // 緩急（時間経過で加速・減速）
-      speedFactor = 1 + 0.5 * Math.sin(Date.now() / 2000);
-    }
-
-    function draw() {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(paddleImg, paddle.x, paddle.y, paddle.width, paddle.height);
-      balls.forEach(b => b.draw());
-    }
-
-    function loop() {
-      update();
-      draw();
-      requestAnimationFrame(loop);
     }
 
     function endGame() {
-      gameOver = true;
-      if (score > highscore) {
-        highscore = score;
-        localStorage.setItem("pickleball_highscore", highscore);
+      clearInterval(gameInterval);
+      clearInterval(speedInterval);
+      running = false;
+
+      // ハイスコア更新チェック
+      let newRecord = false;
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("pickleHighScore", highScore);
+        newRecord = true;
       }
-      document.getElementById("highscore").textContent = highscore;
-      document.getElementById("retryButton").style.display = "block";
+      highScoreDisplay.textContent = "ハイスコア: " + highScore;
+
+      // ゲームオーバー画面
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#ff4081";
+      ctx.font = "bold 50px Comic Sans MS";
+      ctx.textAlign = "center";
+      ctx.fillText("ゲームオーバー！", canvas.width/2, canvas.height/2 - 60);
+      ctx.fillText("スコア: " + score, canvas.width/2, canvas.height/2 + 10);
+      ctx.fillText("ハイスコア: " + highScore, canvas.width/2, canvas.height/2 + 70);
+
+      if (newRecord) {
+        ctx.fillStyle = "#ff0000";
+        ctx.font = "bold 40px Comic Sans MS";
+        ctx.fillText("✨ NEW RECORD! ✨", canvas.width/2, canvas.height/2 + 130);
+      }
+
+      retryButton.style.display = "block";
     }
 
-    document.addEventListener("mousemove", e => {
-      paddle.x = e.clientX - paddle.width/2;
-    });
-    document.addEventListener("touchmove", e => {
-      paddle.x = e.touches[0].clientX - paddle.width/2;
+    function startGame() {
+      resetGame();
+      running = true;
+      startButton.style.display = "none";
+      retryButton.style.display = "none";
+      bgm.volume = 0.3;
+      bgm.play();
+      gameInterval = setInterval(() => {
+        if (Math.random() < 0.04) spawnBall();
+        updateGame();
+      }, 30);
+
+      speedInterval = setInterval(() => {
+        balls.forEach(ball => {
+          const change = (Math.random() - 0.5) * 2;
+          ball.speed = Math.max(1, ball.speed + change);
+        });
+      }, 2000);
+    }
+
+    window.addEventListener("keydown", e => {
+      if (!running) return;
+      if (e.key === "ArrowLeft") player.x = Math.max(0, player.x - player.speed);
+      if (e.key === "ArrowRight") player.x = Math.min(canvas.width - paddleWidth, player.x + player.speed);
     });
 
-    document.getElementById("retryButton").addEventListener("click", () => {
-      score = 0; lives = 3; balls = []; gameOver = false;
-      document.getElementById("score").textContent = score;
-      document.getElementById("lives").textContent = "♥♥♥";
-      document.getElementById("retryButton").style.display = "none";
-    });
-
-    setInterval(spawnBall, 1200);
-    loop();
+    startButton.addEventListener("click", startGame);
+    retryButton.addEventListener("click", startGame);
   </script>
 </body>
 </html>
