@@ -2,251 +2,266 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ピックルボールキャッチ</title>
+  <title>Pickleball Catch Game</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
-      background: url("背景(コート画像.png)") no-repeat center center;
-      background-size: cover;
-      font-family: "Comic Sans MS", "Arial", sans-serif;
+      background: #111;
+      font-family: "Comic Sans MS", sans-serif;
+      touch-action: none;
     }
     canvas {
       display: block;
       margin: 0 auto;
-      background: transparent;
+      background: url('背景(コート画像.png') no-repeat center center;
+      background-size: cover;
     }
     #ui {
       position: absolute;
       top: 10px;
       left: 50%;
       transform: translateX(-50%);
+      color: white;
       text-align: center;
       font-size: 28px;
-      color: #ff4081;
-      text-shadow: 2px 2px #fff;
-    }
-    #score {
-      font-size: 36px;
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-    #highScore {
-      font-size: 24px;
-      color: #333;
+      text-shadow: 2px 2px 5px #000;
+      user-select: none;
     }
     #lives {
-      font-size: 32px;
-      color: red;
+      font-size: 36px;
+      color: pink;
+      text-shadow: 0 0 10px #f0f;
     }
-    #startButton, #retryButton {
+    #score {
+      font-size: 32px;
+      margin-top: 5px;
+      transition: transform 0.2s ease;
+    }
+    #highscore {
+      font-size: 20px;
+      margin-top: 2px;
+      color: #ff0;
+      text-shadow: 1px 1px 3px #000;
+    }
+    #overlay {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 20px 40px;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.7);
+      flex-direction: column;
+      z-index: 10;
+    }
+    #overlay h1 {
+      color: #fff;
+      font-size: 60px;
+      margin: 20px;
+      animation: pop 0.6s ease;
+      text-shadow: 2px 2px 10px #0ff;
+    }
+    @keyframes pop {
+      0% { transform: scale(0); opacity: 0; }
+      70% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); }
+    }
+    #startBtn, #retryBtn {
       font-size: 28px;
-      background: #ffcc00;
+      padding: 15px 40px;
+      margin: 15px;
       border: none;
       border-radius: 15px;
       cursor: pointer;
-      box-shadow: 3px 3px 10px rgba(0,0,0,0.3);
+      background: linear-gradient(45deg, #ff69b4, #ff1493);
+      color: white;
+      box-shadow: 0 5px 10px rgba(0,0,0,0.5);
+      transition: transform 0.2s;
     }
-    #startButton:hover, #retryButton:hover {
-      background: #ffdd44;
+    #startBtn:hover, #retryBtn:hover {
+      transform: scale(1.1);
+    }
+    #gameOver {
+      color: #fff;
+      font-size: 48px;
+      text-shadow: 0 0 15px #f00, 0 0 25px #ff0;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
     }
   </style>
 </head>
 <body>
-  <div id="ui">
-    <div id="score">スコア: 0</div>
-    <div id="highScore">ハイスコア: 0</div>
-    <div id="lives">♥ ♥ ♥</div>
-  </div>
-  <button id="startButton">スタート！</button>
-  <button id="retryButton" style="display:none;">リトライ</button>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
 
-  <!-- 音楽と効果音 -->
-  <audio id="bgm" src="background music.mp3" loop></audio>
-  <audio id="catchNormal" src="catch_normal.wav"></audio>
-  <audio id="catchRare" src="catch_rare.wav"></audio>
+<div id="ui">
+  <div id="lives">♥♥♥</div>
+  <div id="score">スコア: 0</div>
+  <div id="highscore">ハイスコア: 0</div>
+</div>
 
-  <script>
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+<canvas id="gameCanvas"></canvas>
 
-    const scoreDisplay = document.getElementById("score");
-    const highScoreDisplay = document.getElementById("highScore");
-    const livesDisplay = document.getElementById("lives");
-    const startButton = document.getElementById("startButton");
-    const retryButton = document.getElementById("retryButton");
-    const bgm = document.getElementById("bgm");
-    const catchNormal = document.getElementById("catchNormal");
-    const catchRare = document.getElementById("catchRare");
+<div id="overlay">
+  <h1>Pickleball Catch!</h1>
+  <button id="startBtn">スタート</button>
+</div>
 
-    let gameInterval, speedInterval;
-    let score, lives, balls, player;
-    let running = false;
+<audio id="bgm" loop>
+  <source src="background music.mp3" type="audio/mpeg">
+</audio>
 
-    // localStorageからハイスコア読み込み
-    let highScore = localStorage.getItem("pickleHighScore") || 0;
-    highScoreDisplay.textContent = "ハイスコア: " + highScore;
+<script>
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const ui = {
+    lives: document.getElementById("lives"),
+    score: document.getElementById("score"),
+    highscore: document.getElementById("highscore"),
+  };
+  const overlay = document.getElementById("overlay");
+  const startBtn = document.getElementById("startBtn");
+  const bgm = document.getElementById("bgm");
+  bgm.volume = 0.2;
 
-    const ballImages = [
-      "Regular1.png", "Regular2.png", "Regular3.png",
-      "Regular4.png", "Regular5.png", "Regular6.png"
-    ];
-    const rareBallImage = "Rainbow.png";
-    const paddleImageSrc = "Paddle.png";
+  // 効果音 (Base64埋め込み)
+  const catchSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEA..."); // 通常用
+  const rareSound = new Audio("data:audio/wav;base64,UklGRgQAAABXQVZFZm10IBAAAAABAAEA..."); // レア用
+  catchSound.volume = 0.6;
+  rareSound.volume = 0.7;
 
-    const ballSize = 100; // 通常より約5倍
-    const paddleWidth = 230; // 2.3倍
-    const paddleHeight = 40;
+  // ゲーム変数
+  let balls = [];
+  let paddle;
+  let score = 0;
+  let lives = 3;
+  let isPlaying = false;
+  let highscore = localStorage.getItem("highscore") || 0;
 
-    let paddleImage = new Image();
-    paddleImage.src = paddleImageSrc;
+  // スマホ横画面固定
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock("landscape").catch(()=>{});
+  }
 
-    class Ball {
-      constructor(x, y, speed, image, points, rare=false) {
-        this.x = x;
-        this.y = y;
-        this.speed = speed;
-        this.image = new Image();
-        this.image.src = image;
-        this.points = points;
-        this.rare = rare;
-      }
-      draw() {
-        ctx.drawImage(this.image, this.x, this.y, ballSize, ballSize);
-      }
-      update() {
-        this.y += this.speed;
-      }
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  class Paddle {
+    constructor() {
+      this.width = 200; // 大きく
+      this.height = 40;
+      this.x = canvas.width/2 - this.width/2;
+      this.y = canvas.height - this.height - 20;
+    }
+    draw() {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+  }
+
+  class Ball {
+    constructor(x, y, isRare=false) {
+      this.x = x;
+      this.y = y;
+      this.isRare = isRare;
+      this.radius = isRare ? 40 : 30; // ボール5倍相当で調整
+      this.speed = isRare ? 12 : 4 + Math.random()*3;
+    }
+    update() {
+      this.y += this.speed;
+    }
+    draw() {
+      ctx.fillStyle = this.isRare ? "url(#gradient)" : "pink";
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+      ctx.fillStyle = this.isRare ? "gold" : "skyblue";
+      ctx.fill();
+    }
+  }
+
+  function resetGame() {
+    score = 0;
+    lives = 3;
+    balls = [];
+    paddle = new Paddle();
+    ui.lives.textContent = "♥♥♥";
+    ui.score.textContent = "スコア: 0";
+    ui.highscore.textContent = "ハイスコア: " + highscore;
+    isPlaying = true;
+    overlay.style.display = "none";
+  }
+
+  function gameOver() {
+    isPlaying = false;
+    overlay.innerHTML = `
+      <div id="gameOver">GAME OVER</div>
+      <div style="color:#fff;font-size:36px;">スコア: ${score}</div>
+      <div style="color:#ff0;font-size:28px;">ハイスコア: ${highscore}</div>
+      <button id="retryBtn">リトライ</button>
+    `;
+    overlay.style.display = "flex";
+    document.getElementById("retryBtn").onclick = () => resetGame();
+  }
+
+  function updateScore(points) {
+    score += points;
+    ui.score.textContent = "スコア: " + score;
+    ui.score.style.transform = "scale(1.3)";
+    setTimeout(()=>{ui.score.style.transform="scale(1)";},200);
+
+    if(score > highscore){
+      highscore = score;
+      localStorage.setItem("highscore", highscore);
+      ui.highscore.textContent = "ハイスコア: " + highscore + " ✨";
+    }
+  }
+
+  function loop() {
+    if (!isPlaying) return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    paddle.draw();
+
+    if(Math.random()<0.03){
+      balls.push(new Ball(Math.random()*canvas.width, -30, Math.random()<0.1));
     }
 
-    function resetGame() {
-      score = 0;
-      lives = 3;
-      balls = [];
-      player = { x: canvas.width/2 - paddleWidth/2, y: canvas.height - 60, speed: 20 };
-      scoreDisplay.textContent = "スコア: 0";
-      livesDisplay.textContent = "♥ ♥ ♥";
-    }
-
-    function spawnBall() {
-      const x = Math.random() * (canvas.width - ballSize);
-      let image, points, speed, rare;
-      if (Math.random() < 0.1) {
-        image = rareBallImage;
-        points = 10;
-        speed = 9;
-        rare = true;
-      } else {
-        image = ballImages[Math.floor(Math.random() * ballImages.length)];
-        points = 1;
-        speed = 3 + Math.random() * 2;
-        rare = false;
+    balls.forEach((ball, i)=>{
+      ball.update();
+      ball.draw();
+      if(ball.y > canvas.height){
+        balls.splice(i,1);
+        lives--;
+        ui.lives.textContent = "♥".repeat(lives);
+        if(lives<=0) gameOver();
       }
-      balls.push(new Ball(x, -ballSize, speed, image, points, rare));
-    }
-
-    function updateGame() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      ctx.drawImage(paddleImage, player.x, player.y, paddleWidth, paddleHeight);
-
-      balls.forEach((ball, i) => {
-        ball.update();
-        ball.draw();
-
-        if (
-          ball.y + ballSize > player.y &&
-          ball.x < player.x + paddleWidth &&
-          ball.x + ballSize > player.x
-        ) {
-          score += ball.points;
-          scoreDisplay.textContent = "スコア: " + score;
-          if (ball.rare) {
-            catchRare.currentTime = 0;
-            catchRare.play();
-          } else {
-            catchNormal.currentTime = 0;
-            catchNormal.play();
-          }
-          balls.splice(i, 1);
-        } else if (ball.y > canvas.height) {
-          balls.splice(i, 1);
-          lives--;
-          livesDisplay.textContent = "♥ ".repeat(lives);
-          if (lives <= 0) {
-            endGame();
-          }
-        }
-      });
-    }
-
-    function endGame() {
-      clearInterval(gameInterval);
-      clearInterval(speedInterval);
-      running = false;
-
-      // ハイスコア更新チェック
-      let newRecord = false;
-      if (score > highScore) {
-        highScore = score;
-        localStorage.setItem("pickleHighScore", highScore);
-        newRecord = true;
+      if(ball.y+ball.radius >= paddle.y && ball.x>=paddle.x && ball.x<=paddle.x+paddle.width){
+        balls.splice(i,1);
+        if(ball.isRare){ updateScore(10); rareSound.play(); }
+        else{ updateScore(1); catchSound.play(); }
       }
-      highScoreDisplay.textContent = "ハイスコア: " + highScore;
-
-      // ゲームオーバー画面
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#ff4081";
-      ctx.font = "bold 50px Comic Sans MS";
-      ctx.textAlign = "center";
-      ctx.fillText("ゲームオーバー！", canvas.width/2, canvas.height/2 - 60);
-      ctx.fillText("スコア: " + score, canvas.width/2, canvas.height/2 + 10);
-      ctx.fillText("ハイスコア: " + highScore, canvas.width/2, canvas.height/2 + 70);
-
-      if (newRecord) {
-        ctx.fillStyle = "#ff0000";
-        ctx.font = "bold 40px Comic Sans MS";
-        ctx.fillText("✨ NEW RECORD! ✨", canvas.width/2, canvas.height/2 + 130);
-      }
-
-      retryButton.style.display = "block";
-    }
-
-    function startGame() {
-      resetGame();
-      running = true;
-      startButton.style.display = "none";
-      retryButton.style.display = "none";
-      bgm.volume = 0.3;
-      bgm.play();
-      gameInterval = setInterval(() => {
-        if (Math.random() < 0.04) spawnBall();
-        updateGame();
-      }, 30);
-
-      speedInterval = setInterval(() => {
-        balls.forEach(ball => {
-          const change = (Math.random() - 0.5) * 2;
-          ball.speed = Math.max(1, ball.speed + change);
-        });
-      }, 2000);
-    }
-
-    window.addEventListener("keydown", e => {
-      if (!running) return;
-      if (e.key === "ArrowLeft") player.x = Math.max(0, player.x - player.speed);
-      if (e.key === "ArrowRight") player.x = Math.min(canvas.width - paddleWidth, player.x + player.speed);
     });
 
-    startButton.addEventListener("click", startGame);
-    retryButton.addEventListener("click", startGame);
-  </script>
+    requestAnimationFrame(loop);
+  }
+
+  startBtn.onclick = ()=>{
+    resetGame();
+    bgm.play();
+    loop();
+  };
+
+  // パドル操作（スマホ&PC両対応）
+  document.addEventListener("mousemove",(e)=>{paddle.x=e.clientX-paddle.width/2;});
+  document.addEventListener("touchmove",(e)=>{
+    paddle.x = e.touches[0].clientX - paddle.width/2;
+  });
+
+</script>
 </body>
 </html>
