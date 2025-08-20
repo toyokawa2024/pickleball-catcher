@@ -2,244 +2,218 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ピックルキャッチ</title>
+  <title>Pickle Catch Game</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
       background: #000;
-      font-family: "Comic Sans MS", "Arial", sans-serif;
     }
     canvas {
       display: block;
-      margin: 0 auto;
-      background: url('bg.png') no-repeat center center;
+      background: url("bg.png") no-repeat center center;
       background-size: cover;
     }
     #ui {
       position: absolute;
       top: 10px;
-      left: 10px;
-      color: white;
-      font-size: 28px;
-      text-shadow: 2px 2px 5px black;
-      display: flex;
-      align-items: center;
-      gap: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Fredoka One', cursive;
+      font-size: 36px;
+      color: #fff;
+      text-align: center;
+      text-shadow: 2px 2px 4px #000;
     }
     #score {
-      font-size: 32px;
-      transition: transform 0.2s;
+      font-size: 48px;
+      margin-bottom: 10px;
     }
     #lives {
-      font-size: 32px;
-    }
-    #startScreen, #gameOverScreen {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      background: rgba(0,0,0,0.7);
-      color: white;
       font-size: 36px;
-      z-index: 2;
+      color: pink;
     }
-    button {
-      font-size: 28px;
-      padding: 15px 30px;
-      margin-top: 20px;
+    #startBtn, #retryBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Fredoka One', cursive;
+      font-size: 32px;
+      padding: 15px 40px;
       border: none;
-      border-radius: 15px;
-      background: #ff66cc;
-      color: white;
+      border-radius: 20px;
+      background: #ff69b4;
+      color: #fff;
       cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-      transition: transform 0.2s;
+      box-shadow: 0px 4px 8px rgba(0,0,0,0.3);
     }
-    button:hover {
-      transform: scale(1.1);
-    }
-    .pop {
-      animation: pop 0.3s ease;
+    #retryBtn { display: none; }
+    #gameOver {
+      display: none;
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Fredoka One', cursive;
+      font-size: 64px;
+      color: yellow;
+      text-shadow: 3px 3px 6px #000;
+      animation: pop 0.5s ease;
     }
     @keyframes pop {
-      0% { transform: scale(1.5); opacity: 0.6; }
-      100% { transform: scale(1); opacity: 1; }
+      0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+      100% { transform: translateX(-50%) scale(1); opacity: 1; }
     }
   </style>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="ui">
-    <div id="lives">♥♥♥</div>
-    <div id="score">Score: 0</div>
+    <div id="score">SCORE: 0</div>
+    <div id="lives">♥ ♥ ♥</div>
   </div>
-
-  <div id="startScreen">
-    <div>🎾 ピックルキャッチ 🎾</div>
-    <button id="startBtn">スタート</button>
-  </div>
-
-  <div id="gameOverScreen" style="display:none;">
-    <div id="finalScore">Score: 0</div>
-    <button id="retryBtn">リトライ</button>
-  </div>
-
-  <canvas id="gameCanvas"></canvas>
-
-  <!-- 音楽・効果音 -->
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <button id="startBtn">START</button>
+  <button id="retryBtn">RETRY</button>
+  <div id="gameOver">GAME OVER!</div>
   <audio id="bgm" src="bgm.mp3" loop></audio>
   <audio id="catchNormal" src="catch_normal.wav"></audio>
   <audio id="catchRare" src="catch_rare.wav"></audio>
-
+  
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
 
-    // 画像ロード
-    const paddleImg = new Image(); paddleImg.src = "paddle.png";
-    const ballImgs = {
-      pink: "pink.png",
-      orange: "orange.png",
-      blue: "blue.png",
-      green: "green.png",
-      yellow: "yellow.png",
-      lightblue: "lightblue.png",
-      rainbow: "rainbow.png"
-    };
-    const ballsSprites = {};
-    for (let key in ballImgs) {
-      const img = new Image();
-      img.src = ballImgs[key];
-      ballsSprites[key] = img;
-    }
-
-    let paddle = { x: canvas.width/2, y: canvas.height-100, w: 160, h: 40 };
-    let balls = [];
-    let score = 0;
-    let lives = 3;
-    let gameRunning = false;
-    let speedFactor = 2;
+    const scoreEl = document.getElementById("score");
+    const livesEl = document.getElementById("lives");
+    const startBtn = document.getElementById("startBtn");
+    const retryBtn = document.getElementById("retryBtn");
+    const gameOverEl = document.getElementById("gameOver");
 
     const bgm = document.getElementById("bgm");
     bgm.volume = 0.2;
-    const catchNormal = document.getElementById("catchNormal");
-    const catchRare = document.getElementById("catchRare");
+    const sfxNormal = document.getElementById("catchNormal");
+    const sfxRare = document.getElementById("catchRare");
 
-    function resetGame() {
+    let gameInterval, spawnInterval;
+    let balls = [];
+    let score = 0;
+    let lives = 3;
+    let startTime;
+    let gameRunning = false;
+
+    const paddleImg = new Image();
+    paddleImg.src = "paddle.png";
+    const paddle = {
+      x: canvas.width / 2 - 100,
+      y: canvas.height - 80,
+      width: 200,
+      height: 40,
+    };
+
+    const ballTypes = {
+      pink:   { speed: 1,   unlocked: 0 },
+      orange: { speed: 1.5, unlocked: 0 },
+      lightblue: { speed: 2, unlocked: 0 },
+      blue:   { speed: 3,   unlocked: 15 },
+      green:  { speed: 4,   unlocked: 30 },
+      yellow: { speed: 5,   unlocked: 45 },
+      rainbow:{ speed: 8,   unlocked: 0, rare: true }
+    };
+
+    const ballImgs = {};
+    for (let key in ballTypes) {
+      ballImgs[key] = new Image();
+      ballImgs[key].src = key + ".png";
+    }
+
+    document.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      paddle.x = e.clientX - rect.left - paddle.width / 2;
+    });
+
+    function spawnBall() {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      let available = Object.keys(ballTypes).filter(b => elapsed >= ballTypes[b].unlocked);
+      if (Math.random() < 0.05) available.push("rainbow");
+      const type = available[Math.floor(Math.random() * available.length)];
+      balls.push({
+        x: Math.random() * (canvas.width - 60),
+        y: -60,
+        type,
+        speed: ballTypes[type].speed
+      });
+    }
+
+    function update() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      ctx.drawImage(paddleImg, paddle.x, paddle.y, paddle.width, paddle.height);
+
+      for (let i = balls.length-1; i >= 0; i--) {
+        const b = balls[i];
+        ctx.drawImage(ballImgs[b.type], b.x, b.y, 60*3, 60*3); // ボール3倍サイズ
+        b.y += b.speed;
+
+        if (b.y + 60*3 > paddle.y &&
+            b.x + 60*3 > paddle.x &&
+            b.x < paddle.x + paddle.width) {
+          if (b.type === "rainbow") {
+            score += 10;
+            sfxRare.play();
+          } else {
+            score += 1;
+            sfxNormal.play();
+          }
+          balls.splice(i,1);
+          scoreEl.textContent = "SCORE: " + score;
+        } else if (b.y > canvas.height) {
+          balls.splice(i,1);
+          lives--;
+          livesEl.textContent = "♥ ".repeat(lives);
+          if (lives <= 0) endGame();
+        }
+      }
+    }
+
+    function gameLoop() {
+      update();
+    }
+
+    function startGame() {
       score = 0;
       lives = 3;
       balls = [];
-      for (let i=0;i<3;i++) spawnBall();
-      document.getElementById("score").innerText = "Score: 0";
-      document.getElementById("lives").innerText = "♥".repeat(lives);
-    }
-
-    function spawnBall() {
-      const keys = Object.keys(ballsSprites);
-      const type = keys[Math.floor(Math.random()*keys.length)];
-      balls.push({
-        x: Math.random()*(canvas.width-50)+25,
-        y: -50,
-        r: 40, // 大きめ
-        type: type,
-        speed: type==="rainbow" ? speedFactor*6 : speedFactor*2
-      });
-    }
-
-    function drawPaddle() {
-      ctx.drawImage(paddleImg, paddle.x-paddle.w/2, paddle.y-paddle.h/2, paddle.w*2.3, paddle.h*2.3);
-    }
-
-    function drawBalls() {
-      balls.forEach(b=>{
-        ctx.drawImage(ballsSprites[b.type], b.x-b.r, b.y-b.r, b.r*2.5, b.r*2.5);
-      });
-    }
-
-    function updateBalls() {
-      balls.forEach(b=>{
-        b.y += b.speed;
-      });
-      balls = balls.filter(b=>{
-        if (b.y > canvas.height) {
-          lives--;
-          document.getElementById("lives").innerText = "♥".repeat(lives);
-          if (lives<=0) gameOver();
-          return false;
-        }
-        return true;
-      });
-      if (balls.length<3) spawnBall();
-    }
-
-    function checkCatch() {
-      balls.forEach((b,i)=>{
-        if (b.y+b.r > paddle.y-paddle.h/2 &&
-            b.x > paddle.x-paddle.w/2 &&
-            b.x < paddle.x+paddle.w/2) {
-          score += (b.type==="rainbow"?10:1);
-          document.getElementById("score").innerText = "Score: "+score;
-          document.getElementById("score").classList.add("pop");
-          setTimeout(()=>document.getElementById("score").classList.remove("pop"),200);
-
-          if (b.type==="rainbow") catchRare.play();
-          else catchNormal.play();
-
-          balls.splice(i,1);
-        }
-      });
-    }
-
-    function draw() {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      drawPaddle();
-      drawBalls();
-    }
-
-    function loop() {
-      if (!gameRunning) return;
-      updateBalls();
-      checkCatch();
-      draw();
-      requestAnimationFrame(loop);
-    }
-
-    function gameOver() {
-      gameRunning = false;
-      document.getElementById("gameOverScreen").style.display="flex";
-      document.getElementById("finalScore").innerText="Score: "+score;
-      document.getElementById("finalScore").classList.add("pop");
-    }
-
-    // 操作
-    window.addEventListener("mousemove", e=>{
-      paddle.x = e.clientX;
-    });
-    window.addEventListener("touchmove", e=>{
-      paddle.x = e.touches[0].clientX;
-    });
-
-    // スタート
-    document.getElementById("startBtn").addEventListener("click",()=>{
-      document.getElementById("startScreen").style.display="none";
-      resetGame();
+      scoreEl.textContent = "SCORE: 0";
+      livesEl.textContent = "♥ ♥ ♥";
+      gameOverEl.style.display = "none";
+      retryBtn.style.display = "none";
+      startBtn.style.display = "none";
+      startTime = Date.now();
       gameRunning = true;
       bgm.play();
-      loop();
-    });
-    document.getElementById("retryBtn").addEventListener("click",()=>{
-      document.getElementById("gameOverScreen").style.display="none";
-      resetGame();
-      gameRunning = true;
-      loop();
-    });
+      gameInterval = setInterval(gameLoop, 20);
+      spawnInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const maxBalls = Math.min(3 + Math.floor(elapsed/5), 12);
+        if (balls.length < maxBalls) spawnBall();
+      }, 1000);
+    }
 
-    // スマホは横画面推奨
-    screen.orientation && screen.orientation.lock("landscape").catch(()=>{});
+    function endGame() {
+      clearInterval(gameInterval);
+      clearInterval(spawnInterval);
+      gameRunning = false;
+      gameOverEl.style.display = "block";
+      retryBtn.style.display = "block";
+    }
+
+    startBtn.addEventListener("click", startGame);
+    retryBtn.addEventListener("click", startGame);
   </script>
 </body>
 </html>
