@@ -2,218 +2,238 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Pickle Catch Game</title>
+  <title>Pickleball Catch Game</title>
   <style>
     body {
       margin: 0;
       overflow: hidden;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      background: #000;
+      background: black;
     }
     canvas {
       display: block;
-      background: url("bg.png") no-repeat center center;
-      background-size: cover;
+      margin: 0 auto;
+      background: black;
     }
-    #ui {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-family: 'Fredoka One', cursive;
-      font-size: 36px;
-      color: #fff;
-      text-align: center;
-      text-shadow: 2px 2px 4px #000;
-    }
-    #score {
-      font-size: 48px;
-      margin-bottom: 10px;
-    }
-    #lives {
-      font-size: 36px;
-      color: pink;
-    }
-    #startBtn, #retryBtn {
+    #startButton {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      font-family: 'Fredoka One', cursive;
-      font-size: 32px;
-      padding: 15px 40px;
+      font-size: 3rem;
+      padding: 20px 40px;
+      background: #ff66cc;
       border: none;
       border-radius: 20px;
-      background: #ff69b4;
-      color: #fff;
       cursor: pointer;
-      box-shadow: 0px 4px 8px rgba(0,0,0,0.3);
-    }
-    #retryBtn { display: none; }
-    #gameOver {
-      display: none;
-      position: absolute;
-      top: 40%;
-      left: 50%;
-      transform: translateX(-50%);
       font-family: 'Fredoka One', cursive;
-      font-size: 64px;
-      color: yellow;
-      text-shadow: 3px 3px 6px #000;
-      animation: pop 0.5s ease;
-    }
-    @keyframes pop {
-      0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
-      100% { transform: translateX(-50%) scale(1); opacity: 1; }
+      z-index: 10;
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="ui">
-    <div id="score">SCORE: 0</div>
-    <div id="lives">♥ ♥ ♥</div>
-  </div>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <button id="startBtn">START</button>
-  <button id="retryBtn">RETRY</button>
-  <div id="gameOver">GAME OVER!</div>
-  <audio id="bgm" src="bgm.mp3" loop></audio>
-  <audio id="catchNormal" src="catch_normal.wav"></audio>
-  <audio id="catchRare" src="catch_rare.wav"></audio>
-  
+  <button id="startButton">START</button>
+  <canvas id="gameCanvas"></canvas>
+
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-    const scoreEl = document.getElementById("score");
-    const livesEl = document.getElementById("lives");
-    const startBtn = document.getElementById("startBtn");
-    const retryBtn = document.getElementById("retryBtn");
-    const gameOverEl = document.getElementById("gameOver");
+    // ---- 画面サイズを常に16:9に調整 ----
+    function resizeCanvas() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (w / h > 16 / 9) {
+        // 横長すぎる → 高さ基準
+        canvas.height = h;
+        canvas.width = h * (16 / 9);
+      } else {
+        // 縦長すぎる → 幅基準
+        canvas.width = w;
+        canvas.height = w * (9 / 16);
+      }
+      if (bgImg) {
+        bgPattern = null; // 再生成のためリセット
+      }
+    }
+    window.addEventListener("resize", resizeCanvas);
 
-    const bgm = document.getElementById("bgm");
-    bgm.volume = 0.2;
-    const sfxNormal = document.getElementById("catchNormal");
-    const sfxRare = document.getElementById("catchRare");
-
-    let gameInterval, spawnInterval;
-    let balls = [];
-    let score = 0;
-    let lives = 3;
-    let startTime;
-    let gameRunning = false;
-
+    // ---- 画像読み込み ----
+    const bgImg = new Image();
+    bgImg.src = "bg.png";
+    const ballImages = {
+      pink: "pink.png",
+      orange: "orange.png",
+      blue: "blue.png",
+      lightblue: "lightblue.png",
+      green: "green.png",
+      yellow: "yellow.png",
+      rainbow: "rainbow.png"
+    };
+    const loadedBalls = {};
+    for (let key in ballImages) {
+      const img = new Image();
+      img.src = ballImages[key];
+      loadedBalls[key] = img;
+    }
     const paddleImg = new Image();
     paddleImg.src = "paddle.png";
-    const paddle = {
-      x: canvas.width / 2 - 100,
-      y: canvas.height - 80,
-      width: 200,
-      height: 40,
-    };
 
-    const ballTypes = {
-      pink:   { speed: 1,   unlocked: 0 },
-      orange: { speed: 1.5, unlocked: 0 },
-      lightblue: { speed: 2, unlocked: 0 },
-      blue:   { speed: 3,   unlocked: 15 },
-      green:  { speed: 4,   unlocked: 30 },
-      yellow: { speed: 5,   unlocked: 45 },
-      rainbow:{ speed: 8,   unlocked: 0, rare: true }
-    };
+    // ---- サウンド ----
+    const bgm = new Audio("bgm.mp3");
+    bgm.loop = true;
+    bgm.volume = 0.2;
 
-    const ballImgs = {};
-    for (let key in ballTypes) {
-      ballImgs[key] = new Image();
-      ballImgs[key].src = key + ".png";
+    const catchSound = new Audio("catch.mp3");
+    const rareSound = new Audio("rare.mp3");
+
+    // ---- ゲーム変数 ----
+    let paddle, balls, score, lives, gameOver, gameStarted, startTime;
+    let bgPattern = null;
+
+    function initGame() {
+      paddle = {
+        x: canvas.width / 2,
+        y: canvas.height - 80,
+        width: 180, // 以前より拡大
+        height: 60
+      };
+      balls = [];
+      score = 0;
+      lives = 3;
+      gameOver = false;
+      startTime = Date.now();
     }
 
-    document.addEventListener("mousemove", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      paddle.x = e.clientX - rect.left - paddle.width / 2;
-    });
-
+    // ---- ボール生成 ----
     function spawnBall() {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      let available = Object.keys(ballTypes).filter(b => elapsed >= ballTypes[b].unlocked);
-      if (Math.random() < 0.05) available.push("rainbow");
-      const type = available[Math.floor(Math.random() * available.length)];
+      const types = ["pink", "orange", "blue", "lightblue", "green", "yellow", "rainbow"];
+      let type = types[Math.floor(Math.random() * types.length)];
+      let speed;
+      switch (type) {
+        case "pink": speed = 1.5; break;       // とてもゆっくり
+        case "orange": speed = 2.5; break;    // ゆっくり
+        case "blue": speed = 3.5; break;      // 遅め
+        case "lightblue": speed = 4.5; break; // 普通
+        case "green": speed = 5.5; break;     // 少し早い
+        case "yellow": speed = 6.5; break;    // 早い
+        case "rainbow": speed = 5.0; break;   // レア
+      }
+      // 全体底上げ（+2段階分相当）
+      speed += 2;
+
+      const size = 150; // 大きめボール
       balls.push({
-        x: Math.random() * (canvas.width - 60),
-        y: -60,
-        type,
-        speed: ballTypes[type].speed
+        x: Math.random() * (canvas.width - size),
+        y: -size,
+        size: size,
+        speed: speed,
+        type: type
       });
     }
 
+    // ---- ゲームループ ----
     function update() {
-      ctx.clearRect(0,0,canvas.width,canvas.height);
+      if (gameOver) return;
 
+      // 時間経過で出現数を増やす
+      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      let maxBalls = Math.min(3 + Math.floor(elapsedSec / 5), 12);
+
+      // ボール補充
+      while (balls.length < maxBalls) {
+        spawnBall();
+      }
+
+      // ボール更新
+      balls.forEach(ball => {
+        ball.y += ball.speed;
+      });
+
+      // 衝突判定
+      balls = balls.filter(ball => {
+        if (
+          ball.x < paddle.x + paddle.width &&
+          ball.x + ball.size > paddle.x &&
+          ball.y + ball.size > paddle.y &&
+          ball.y < paddle.y + paddle.height
+        ) {
+          // キャッチ
+          score += (ball.type === "rainbow" ? 5 : 1);
+          (ball.type === "rainbow" ? rareSound : catchSound).play();
+          return false;
+        } else if (ball.y > canvas.height) {
+          lives--;
+          if (lives <= 0) gameOver = true;
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function draw() {
+      // 背景
+      ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+      // スコアとライフ
+      ctx.fillStyle = "white";
+      ctx.font = "48px 'Fredoka One'";
+      ctx.textAlign = "center";
+      ctx.fillText("SCORE: " + score, canvas.width / 2, 60);
+
+      let hearts = "♥".repeat(lives);
+      ctx.fillStyle = "pink";
+      ctx.fillText(hearts, canvas.width / 2, 120);
+
+      // パドル
       ctx.drawImage(paddleImg, paddle.x, paddle.y, paddle.width, paddle.height);
 
-      for (let i = balls.length-1; i >= 0; i--) {
-        const b = balls[i];
-        ctx.drawImage(ballImgs[b.type], b.x, b.y, 60*3, 60*3); // ボール3倍サイズ
-        b.y += b.speed;
+      // ボール
+      balls.forEach(ball => {
+        ctx.drawImage(loadedBalls[ball.type], ball.x, ball.y, ball.size, ball.size);
+      });
 
-        if (b.y + 60*3 > paddle.y &&
-            b.x + 60*3 > paddle.x &&
-            b.x < paddle.x + paddle.width) {
-          if (b.type === "rainbow") {
-            score += 10;
-            sfxRare.play();
-          } else {
-            score += 1;
-            sfxNormal.play();
-          }
-          balls.splice(i,1);
-          scoreEl.textContent = "SCORE: " + score;
-        } else if (b.y > canvas.height) {
-          balls.splice(i,1);
-          lives--;
-          livesEl.textContent = "♥ ".repeat(lives);
-          if (lives <= 0) endGame();
-        }
+      if (gameOver) {
+        ctx.fillStyle = "yellow";
+        ctx.font = "80px 'Fredoka One'";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+        ctx.font = "48px 'Fredoka One'";
+        ctx.fillText("FINAL SCORE: " + score, canvas.width / 2, canvas.height / 2 + 80);
       }
     }
 
-    function gameLoop() {
-      update();
+    function loop() {
+      if (gameStarted) {
+        update();
+        draw();
+      }
+      requestAnimationFrame(loop);
     }
 
-    function startGame() {
-      score = 0;
-      lives = 3;
-      balls = [];
-      scoreEl.textContent = "SCORE: 0";
-      livesEl.textContent = "♥ ♥ ♥";
-      gameOverEl.style.display = "none";
-      retryBtn.style.display = "none";
-      startBtn.style.display = "none";
-      startTime = Date.now();
-      gameRunning = true;
+    // ---- 入力 ----
+    window.addEventListener("mousemove", e => {
+      if (!gameStarted) return;
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      paddle.x = mouseX - paddle.width / 2;
+    });
+    window.addEventListener("touchmove", e => {
+      if (!gameStarted) return;
+      const rect = canvas.getBoundingClientRect();
+      const touchX = e.touches[0].clientX - rect.left;
+      paddle.x = touchX - paddle.width / 2;
+    });
+
+    // ---- スタート ----
+    document.getElementById("startButton").addEventListener("click", () => {
+      document.getElementById("startButton").style.display = "none";
+      gameStarted = true;
       bgm.play();
-      gameInterval = setInterval(gameLoop, 20);
-      spawnInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const maxBalls = Math.min(3 + Math.floor(elapsed/5), 12);
-        if (balls.length < maxBalls) spawnBall();
-      }, 1000);
-    }
+      initGame();
+    });
 
-    function endGame() {
-      clearInterval(gameInterval);
-      clearInterval(spawnInterval);
-      gameRunning = false;
-      gameOverEl.style.display = "block";
-      retryBtn.style.display = "block";
-    }
-
-    startBtn.addEventListener("click", startGame);
-    retryBtn.addEventListener("click", startGame);
+    resizeCanvas();
+    loop();
   </script>
 </body>
 </html>
