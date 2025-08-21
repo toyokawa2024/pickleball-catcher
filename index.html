@@ -50,7 +50,8 @@
     const catchNormal = new Audio("catch_normal.wav");
     const catchRare = new Audio("catch_rare.wav");
     const missSound = new Audio("miss.mp3");
-    const gameoverSound = new Audio("gameover.mp3");
+    const gameoverSound = new Audio("gameover.mp3"); 
+    gameoverSound.volume = 0.25; // ゲームオーバー曲の音量半分
 
     // 状態
     let gameState = "title"; // title, playing, gameover
@@ -61,13 +62,13 @@
 
     // ボール設定
     const ballTypes = {
-      pink: { speed: 1, score: 10 },
-      orange: { speed: 2, score: 20 },
-      blue: { speed: 3, score: 30 },
-      lightblue: { speed: 4, score: 40 },
-      green: { speed: 5, score: 50 },
-      yellow: { speed: 6, score: 60 },
-      rainbow: { speed: 8, score: 200, rare: true }
+      pink: { speed: 1, score: 1 },
+      orange: { speed: 2, score: 1 },
+      blue: { speed: 3, score: 1 },
+      lightblue: { speed: 4, score: 1 },
+      green: { speed: 5, score: 1 },
+      yellow: { speed: 6, score: 1 },
+      rainbow: { speed: 10, score: 10, rare: true } // レアは+2速い & 10点
     };
 
     // 入力
@@ -113,6 +114,8 @@
       maxBalls = 2;
       startTime = Date.now();
       lastSpawn = 0;
+      // 🔄 リトライ時にゲームオーバー曲を止める
+      gameoverSound.pause(); gameoverSound.currentTime = 0;
       bgm.currentTime = 0; bgm.play();
     }
 
@@ -169,7 +172,11 @@
       balls.forEach(b=>ctx.drawImage(ballImgs[b.type],b.x,b.y,b.size,b.size));
       ctx.fillStyle="white"; ctx.font="48px 'Fredoka One'"; ctx.textAlign="center";
       ctx.fillText("Score: "+score,canvas.width/2,60);
-      ctx.fillText("♥".repeat(lives),canvas.width/2,120);
+
+      // 💛 ライフ表示（ピンク&2倍サイズ）
+      ctx.fillStyle="#ff66cc"; 
+      ctx.font="96px 'Fredoka One'"; 
+      ctx.fillText("♥".repeat(lives),canvas.width/2,150);
     }
 
     function drawTitleScreen() {
