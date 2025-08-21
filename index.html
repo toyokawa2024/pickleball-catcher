@@ -2,93 +2,43 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Ball Catch Game</title>
+  <title>Catch Game</title>
   <style>
-    html, body {
+    body {
       margin: 0;
-      padding: 0;
       overflow: hidden;
-      height: 100%;
-      width: 100%;
       background: black;
-      touch-action: none;
     }
     canvas {
       display: block;
-      background: url("bg.png") no-repeat center center / cover;
-      margin: auto;
+      background: black;
     }
-    #startScreen, #gameOverScreen {
+    #muteButton {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: url("title.png") no-repeat center center / cover;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      z-index: 2;
-    }
-    #startBtn, #retryBtn {
-      font-size: 32px;
-      padding: 15px 40px;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      font-size: 20px;
+      background: rgba(255,255,255,0.7);
       border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      background: #ff4081;
-      color: white;
-      font-family: "Fredoka One", sans-serif;
-    }
-    #scoreboard {
-      position: absolute;
-      top: 10px; left: 50%;
-      transform: translateX(-50%);
-      color: white;
-      font-size: 36px;
-      font-family: "Fredoka One", sans-serif;
-      display: flex;
-      gap: 30px;
-      align-items: center;
-    }
-    #lives {
-      font-size: 72px;
-      color: pink;
-    }
-    #muteBtn {
-      position: absolute;
-      top: 10px; left: 10px;
-      font-size: 32px;
-      background: none;
-      border: none;
-      cursor: pointer;
-      z-index: 3;
+      border-radius: 8px;
+      padding: 6px 12px;
     }
   </style>
 </head>
 <body>
-  <div id="startScreen">
-    <button id="startBtn">スタート</button>
-  </div>
-  <div id="gameOverScreen" style="display:none; background:rgba(0,0,0,0.8);">
-    <h1 style="color:white; font-size:48px; font-family:'Fredoka One', sans-serif;">GAME OVER</h1>
-    <button id="retryBtn">リトライ</button>
-  </div>
-  <div id="scoreboard">
-    <div id="score">0</div>
-    <div id="lives">💗💗💗</div>
-  </div>
-  <button id="muteBtn">🎵</button>
+  <button id="muteButton">🔊</button>
   <canvas id="gameCanvas"></canvas>
 
   <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
-    // レスポンシブ（横固定）
+    // --- サイズ調整（横固定 16:9） ---
     function resizeCanvas() {
-      const aspect = 16/9;
       let w = window.innerWidth;
       let h = window.innerHeight;
+      let aspect = 16 / 9;
       if (w / h > aspect) {
         w = h * aspect;
       } else {
@@ -100,178 +50,241 @@
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    // 画像
-    const paddleImg = new Image();
-    paddleImg.src = "paddle.png";
+    // --- 画像 ---
+    const bgImage = new Image();
+    bgImage.src = "bg.png";
+    const paddleImage = new Image();
+    paddleImage.src = "paddle.png";
+
     const ballImages = {
-      pink: "pink.png",
-      orange: "orange.png",
-      blue: "blue.png",
-      green: "green.png",
-      yellow: "yellow.png",
-      lightblue: "lightblue.png",
-      rainbow: "rainbow.png"
+      pink: loadImg("pink.png"),
+      orange: loadImg("orange.png"),
+      blue: loadImg("blue.png"),
+      lightblue: loadImg("lightblue.png"),
+      green: loadImg("green.png"),
+      yellow: loadImg("yellow.png"),
+      rainbow: loadImg("rainbow.png"),
     };
-    for (let key in ballImages) {
+
+    function loadImg(src) {
       const img = new Image();
-      img.src = ballImages[key];
-      ballImages[key] = img;
+      img.src = src;
+      return img;
     }
 
-    // 音
-    let bgmAudio = new Audio("bgm.mp3");
-    bgmAudio.loop = true;
-    let gameoverAudio = new Audio("gameover.mp3");
-    let missAudio = new Audio("miss.mp3");
-    let catchNormalAudio = new Audio("catch_normal.wav");
-    let catchRareAudio = new Audio("catch_rare.wav");
+    // --- 音声 ---
+    const bgm = new Audio("bgm.mp3");
+    bgm.loop = true;
+    bgm.volume = 0.2;
 
-    let isMuted = false;
-    function updateVolumes() {
-      bgmAudio.volume = isMuted ? 0 : 0.2;
-      gameoverAudio.volume = isMuted ? 0 : 0.1;
-      missAudio.volume = isMuted ? 0 : 1.0;
-      catchNormalAudio.volume = isMuted ? 0 : 1.0;
-      catchRareAudio.volume = isMuted ? 0 : 1.0;
-    }
-    function toggleMute() {
-      isMuted = !isMuted;
-      document.getElementById("muteBtn").textContent = isMuted ? "🔇" : "🎵";
-      updateVolumes();
-    }
-    document.getElementById("muteBtn").addEventListener("click", toggleMute);
+    const catchNormal = new Audio("catch_normal.wav");
+    const catchRare = new Audio("catch_rare.wav");
+    const missSound = new Audio("miss.mp3");
+    const gameoverSound = new Audio("gameover.mp3");
+    gameoverSound.volume = 0.5;
 
-    // ゲーム変数
+    let muted = localStorage.getItem("muted") === "true";
+    updateMute();
+
+    document.getElementById("muteButton").addEventListener("click", () => {
+      muted = !muted;
+      localStorage.setItem("muted", muted);
+      updateMute();
+    });
+
+    function updateMute() {
+      const btn = document.getElementById("muteButton");
+      if (muted) {
+        bgm.pause();
+        btn.textContent = "🔇";
+      } else {
+        if (gameState === "playing") bgm.play();
+        btn.textContent = "🔊";
+      }
+    }
+
+    // --- ゲーム変数 ---
+    let gameState = "title";
     let score = 0;
+    let highScore = 0;
     let lives = 3;
     let balls = [];
-    let paddle = { x: 0, y: 0, width: 100, height: 30 };
-    let gameRunning = false;
-    let lastBallIncrease = 0;
+    let paddleX = 0;
+    const PADDLE_WIDTH = 120;
+    const PADDLE_HEIGHT = 40;
+
+    const BALL_SIZE = 48; // ← 1.5倍サイズ
+    const BALL_SPEEDS = {
+      pink: 2,
+      orange: 3,
+      blue: 4,
+      lightblue: 5,
+      green: 6,
+      yellow: 7,
+      rainbow: 9,
+    };
+
+    let lastBallIncrease = Date.now();
     let maxBalls = 2;
 
-    function resetGame() {
+    // --- イベント ---
+    canvas.addEventListener("mousemove", e => {
+      let rect = canvas.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      paddleX = Math.min(Math.max(x - PADDLE_WIDTH / 2, 0), canvas.width - PADDLE_WIDTH);
+    });
+
+    canvas.addEventListener("touchmove", e => {
+      let rect = canvas.getBoundingClientRect();
+      let x = e.touches[0].clientX - rect.left;
+      paddleX = Math.min(Math.max(x - PADDLE_WIDTH / 2, 0), canvas.width - PADDLE_WIDTH);
+    });
+
+    canvas.addEventListener("click", () => {
+      if (gameState === "title") startGame();
+      else if (gameState === "gameover") startGame();
+    });
+
+    // --- ゲーム開始 ---
+    function startGame() {
       score = 0;
       lives = 3;
       balls = [];
       maxBalls = 2;
       lastBallIncrease = Date.now();
-      paddle.width = canvas.width * 0.15;
-      paddle.height = canvas.height * 0.05;
-      paddle.x = canvas.width / 2 - paddle.width / 2;
-      paddle.y = canvas.height - paddle.height - 10;
-      document.getElementById("score").textContent = score;
-      document.getElementById("lives").textContent = "💗💗💗";
-      gameoverAudio.pause();
-      gameoverAudio.currentTime = 0;
-      updateVolumes();
+      gameState = "playing";
+      if (!muted) {
+        bgm.currentTime = 0;
+        bgm.play();
+      }
     }
 
-    function startGame() {
-      document.getElementById("startScreen").style.display = "none";
-      document.getElementById("gameOverScreen").style.display = "none";
-      resetGame();
-      bgmAudio.play();
-      gameRunning = true;
-      requestAnimationFrame(gameLoop);
-    }
-
-    function gameOver() {
-      gameRunning = false;
-      bgmAudio.pause();
-      bgmAudio.currentTime = 0;
-      gameoverAudio.play();
-      document.getElementById("gameOverScreen").style.display = "flex";
-    }
-
+    // --- ボール生成 ---
     function spawnBall() {
-      const colors = ["pink", "orange", "blue", "green", "yellow", "lightblue"];
+      const colors = Object.keys(ballImages);
       let color = colors[Math.floor(Math.random() * colors.length)];
-      if (Math.random() < 0.05) color = "rainbow"; // レア出現
-
-      let speedMap = {
-        pink: 2, orange: 3, blue: 4,
-        green: 5, yellow: 6, lightblue: 7,
-        rainbow: 9 // レアは更に+2
-      };
-
-      balls.push({
-        x: Math.random() * (canvas.width - 40),
-        y: -40,
-        size: 60, // 大きめ
-        speed: speedMap[color],
-        color: color
-      });
+      // 出現制御（最初は遅い色多め）
+      if (score < 50) {
+        color = ["pink","orange","blue","lightblue"][Math.floor(Math.random()*4)];
+      }
+      const x = Math.random() * (canvas.width - BALL_SIZE);
+      balls.push({x, y: -BALL_SIZE, color});
     }
 
-    function gameLoop() {
-      if (!gameRunning) return;
+    // --- 更新 ---
+    function update() {
+      if (gameState === "playing") {
+        // ボール増加（10秒ごと+1）
+        if (Date.now() - lastBallIncrease > 10000) {
+          maxBalls = Math.min(12, maxBalls + 1);
+          lastBallIncrease = Date.now();
+        }
+
+        // ボール追加
+        if (balls.length < maxBalls) spawnBall();
+
+        // ボール移動
+        balls.forEach(ball => {
+          ball.y += BALL_SPEEDS[ball.color];
+        });
+
+        // 衝突判定
+        balls = balls.filter(ball => {
+          if (ball.y + BALL_SIZE >= canvas.height - PADDLE_HEIGHT) {
+            if (ball.x + BALL_SIZE > paddleX && ball.x < paddleX + PADDLE_WIDTH) {
+              if (ball.color === "rainbow") {
+                score += 10;
+                if (!muted) { catchRare.currentTime = 0; catchRare.play(); }
+              } else {
+                score += 1;
+                if (!muted) { catchNormal.currentTime = 0; catchNormal.play(); }
+              }
+              return false;
+            } else {
+              if (ball.color !== "rainbow") {
+                lives--;
+                if (!muted) { missSound.currentTime = 0; missSound.play(); }
+                if (lives <= 0) {
+                  gameState = "gameover";
+                  highScore = Math.max(highScore, score);
+                  if (!muted) {
+                    bgm.pause();
+                    gameoverSound.currentTime = 0;
+                    gameoverSound.play();
+                  }
+                }
+              }
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+    }
+
+    // --- 描画 ---
+    function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // ボール追加（5秒ごと最大12個）
-      if (Date.now() - lastBallIncrease > 5000) {
-        if (maxBalls < 12) maxBalls++;
-        lastBallIncrease = Date.now();
-      }
-      if (balls.length < maxBalls) spawnBall();
+      if (gameState === "title") {
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.font = `${Math.floor(canvas.height / 12)}px 'Fredoka One'`;
+        ctx.textAlign = "center";
 
-      // ボール描画
-      for (let i = balls.length - 1; i >= 0; i--) {
-        const b = balls[i];
-        b.y += b.speed;
-        ctx.drawImage(ballImages[b.color], b.x, b.y, b.size, b.size);
-
-        if (
-          b.y + b.size >= paddle.y &&
-          b.x + b.size >= paddle.x &&
-          b.x <= paddle.x + paddle.width
-        ) {
-          // キャッチ判定
-          if (b.color === "rainbow") {
-            score += 10;
-            catchRareAudio.play();
-          } else {
-            score += 1;
-            catchNormalAudio.play();
-          }
-          balls.splice(i, 1);
-          document.getElementById("score").textContent = score;
-        } else if (b.y > canvas.height) {
-          // 落下
-          if (b.color !== "rainbow") {
-            lives--;
-            missAudio.play();
-          }
-          balls.splice(i, 1);
-          document.getElementById("lives").textContent = "💗".repeat(lives);
-          if (lives <= 0) {
-            gameOver();
-          }
+        // Tap to Start 点滅
+        if (Math.floor(Date.now() / 500) % 2 === 0) {
+          ctx.fillText("Tap to Start", canvas.width / 2, canvas.height * 0.7);
         }
+
+      } else if (gameState === "playing") {
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+
+        // ボール描画
+        balls.forEach(ball => {
+          ctx.drawImage(ballImages[ball.color], ball.x, ball.y, BALL_SIZE, BALL_SIZE);
+        });
+
+        // パドル描画
+        ctx.drawImage(paddleImage, paddleX, canvas.height - PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+        // スコア＆ライフ
+        ctx.fillStyle = "white";
+        ctx.font = `${Math.floor(canvas.height / 15)}px 'Fredoka One'`;
+        ctx.textAlign = "center";
+        ctx.fillText(`Score: ${score}`, canvas.width / 2, 60);
+
+        ctx.fillStyle = "pink";
+        ctx.font = `${Math.floor(canvas.height / 12)}px 'Fredoka One'`;
+        ctx.fillText("💛".repeat(lives), canvas.width / 2, 120);
+
+      } else if (gameState === "gameover") {
+        ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "red";
+        ctx.font = `${Math.floor(canvas.height / 10)}px 'Fredoka One'`;
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height * 0.4);
+
+        ctx.fillStyle = "white";
+        ctx.font = `${Math.floor(canvas.height / 15)}px 'Fredoka One'`;
+        ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height * 0.55);
+        ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, canvas.height * 0.65);
+
+        ctx.fillText("Tap to Retry", canvas.width / 2, canvas.height * 0.8);
       }
-
-      // パドル描画
-      ctx.drawImage(paddleImg, paddle.x, paddle.y, paddle.width, paddle.height);
-
-      requestAnimationFrame(gameLoop);
     }
 
-    // 操作
-    window.addEventListener("mousemove", e => {
-      paddle.x = e.clientX / window.innerWidth * canvas.width - paddle.width/2;
-      if (paddle.x < 0) paddle.x = 0;
-      if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
-    });
-    window.addEventListener("touchmove", e => {
-      let touch = e.touches[0];
-      paddle.x = touch.clientX / window.innerWidth * canvas.width - paddle.width/2;
-      if (paddle.x < 0) paddle.x = 0;
-      if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
-    });
+    // --- メインループ ---
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+    loop();
 
-    // ボタン
-    document.getElementById("startBtn").addEventListener("click", startGame);
-    document.getElementById("retryBtn").addEventListener("click", startGame);
+    // --- 画面回転制御（横固定） ---
+    screen.orientation.lock("landscape").catch(()=>{});
   </script>
 </body>
 </html>
