@@ -64,42 +64,52 @@
     const ctx = canvas.getContext("2d");
     const muteBtn = document.getElementById("muteButton");
 
-    // 16:9固定サイズ設定
-    const ASPECT_RATIO = 16 / 9;
+    // 動的比率対応設定
+    const MIN_ASPECT_RATIO = 16 / 9;  // 最小比率（PC用）
+    const MAX_ASPECT_RATIO = 2.5 / 1; // 最大比率（超ワイドスマホ対応）
     const BASE_WIDTH = 1600;
     const BASE_HEIGHT = 900;
 
     function resizeCanvas() {
-      // スマホのアドレスバー等を考慮した実際の利用可能サイズ
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
-      const availableHeight = Math.min(windowHeight, screen.height);
+      
+      // デバイスの実際の比率を計算
+      const deviceAspectRatio = windowWidth / windowHeight;
+      
+      // 比率を制限内に収める
+      const targetAspectRatio = Math.max(MIN_ASPECT_RATIO, 
+                                Math.min(MAX_ASPECT_RATIO, deviceAspectRatio));
       
       let canvasWidth, canvasHeight;
       
-      // スマホ対応：より積極的に画面を使用
-      const actualRatio = windowWidth / availableHeight;
-      
-      if (actualRatio > ASPECT_RATIO) {
+      // 常に画面全体を使用（95%のマージン）
+      if (deviceAspectRatio > targetAspectRatio) {
         // 横が余る場合
-        canvasHeight = availableHeight * 0.95; // 95%を使用
-        canvasWidth = canvasHeight * ASPECT_RATIO;
+        canvasHeight = windowHeight * 0.95;
+        canvasWidth = canvasHeight * targetAspectRatio;
       } else {
         // 縦が余る場合
-        canvasWidth = windowWidth * 0.98; // 98%を使用
-        canvasHeight = canvasWidth / ASPECT_RATIO;
+        canvasWidth = windowWidth * 0.98;
+        canvasHeight = canvasWidth / targetAspectRatio;
         
-        // 高さが画面を超える場合の調整
-        if (canvasHeight > availableHeight * 0.95) {
-          canvasHeight = availableHeight * 0.95;
-          canvasWidth = canvasHeight * ASPECT_RATIO;
+        if (canvasHeight > windowHeight * 0.95) {
+          canvasHeight = windowHeight * 0.95;
+          canvasWidth = canvasHeight * targetAspectRatio;
         }
       }
       
-      canvas.width = BASE_WIDTH;
-      canvas.height = BASE_HEIGHT;
+      // Canvasの内部サイズを比率に合わせて動的に調整
+      const dynamicWidth = BASE_WIDTH;
+      const dynamicHeight = Math.round(BASE_WIDTH / targetAspectRatio);
+      
+      canvas.width = dynamicWidth;
+      canvas.height = dynamicHeight;
       canvas.style.width = canvasWidth + 'px';
       canvas.style.height = canvasHeight + 'px';
+      
+      // ゲーム内で使用する実際の高さを更新
+      window.GAME_HEIGHT = dynamicHeight;
     }
 
     window.addEventListener("resize", resizeCanvas);
@@ -110,7 +120,7 @@
     const bgm = new Audio("bgm.mp3"); 
     bgm.loop = true; 
     bgm.volume = 0.2;
-    const catchNormalSound = new Audio("catch_normal.wav");
+    const catchNormalSound = new Audio("catch_normal.mp3");
     const catchRareSound = new Audio("catch_rare.wav");
     const missSound = new Audio("miss.mp3");
     const gameoverSound = new Audio("gameover.mp3");
@@ -235,8 +245,21 @@
       gameoverSound.pause();
       gameoverSound.currentTime = 0;
       
-      bgm.currentTime = 0; 
-      if (!isMuted) bgm.play();
+      bgm.currentTime = 0;
+      // スマホでBGMが再生されない問題を解決
+      if (!isMuted) {
+        const playPromise = bgm.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.log("BGM autoplay prevented:", error);
+            // ユーザーインタラクション後に再試行
+            document.addEventListener('touchstart', function playBGM() {
+              bgm.play();
+              document.removeEventListener('touchstart', playBGM);
+            }, { once: true });
+          });
+        }
+      }
     }
 
     // ボール出現ルール
@@ -363,11 +386,17 @@
             ball.x + ball.size > paddle.x && ball.x < paddle.x + 300) {
           score += ballTypes[ball.type].score;
           
-          // サウンド再生
+          // サウンド再生（スマホ対応改善）
           const sound = ball.type === "rainbow" ? catchRareSound : catchNormalSound;
           if (!isMuted) {
-            const audioClone = sound.cloneNode();
-            audioClone.play();
+            try {
+              const audioClone = sound.cloneNode();
+              audioClone.volume = 0.7; // 音量調整
+              audioClone.currentTime = 0;
+              audioClone.play().catch(e => console.log("Audio play failed:", e));
+            } catch (e) {
+              console.log("Audio clone failed:", e);
+            }
           }
           
           balls.splice(i, 1);
@@ -400,10 +429,13 @@
     }
 
     function draw() {
-      // 背景
-      ctx.drawImage(bgImg, 0, 0, BASE_WIDTH, BASE_HEIGHT);
+      const gameHeight = window.GAME_HEIGHT || BASE_HEIGHT;
       
-      // パドル
+      // 背景（動的サイズ対応）
+      ctx.drawImage(bgImg, 0, 0, BASE_WIDTH, gameHeight);
+      
+      // パドル（下端からの相対位置）
+      paddle.y = gameHeight - 120;
       ctx.drawImage(paddleImg, paddle.x, paddle.y, 300, 80);
       
       // ボール
