@@ -1,4 +1,14 @@
-<!DOCTYPE html>
+// ボール出現制御（よりシビアな出現）
+      if (elapsed - lastSpawn > 0.6 && balls.length < maxBalls) {
+        spawnBall(); 
+        lastSpawn = elapsed;
+      }
+      
+      // 追加出現：最大数に達していない場合は強制的に出現
+      if (balls.length < maxBalls - 2 && elapsed - lastSpawn > 0.3) {
+        // 最大数-2個以下なら90%確率で強制出現
+        if (Math.random() < 0.9) {
+          spawnBall<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -126,13 +136,13 @@
     // ボール設定（サイズ調整、速度調整）
     const BALL_SIZE = 180; // ボールサイズを180pxに
     const ballTypes = {
-      pink: { speed: 2, score: 1 },      // とても遅い
-      orange: { speed: 3, score: 1 },    // 遅い
-      lightblue: { speed: 4, score: 1 }, // 普通
-      blue: { speed: 5, score: 1 },      // 少し早い
-      green: { speed: 6, score: 1 },     // 早い
-      yellow: { speed: 7, score: 1 },    // とても早い
-      rainbow: { speed: 25, score: 10, rare: true } // 特別・激速（青の5倍）
+      pink: { speed: 2, score: 1 },       // 2固定
+      orange: { speed: 4, score: 1 },     // 2+2=4
+      lightblue: { speed: 6, score: 1 },  // 4+2=6
+      blue: { speed: 8, score: 1 },       // 6+2=8
+      green: { speed: 10, score: 1 },     // 8+2=10
+      yellow: { speed: 12, score: 1 },    // 10+2=12
+      rainbow: { speed: 25, score: 10, rare: true } // 25固定
     };
 
     // 入力処理
@@ -301,9 +311,21 @@
       if (!startTime) startTime = Date.now();
       const elapsed = (Date.now() - startTime) / 1000;
 
-      // ボール出現制御
-      if (elapsed - lastSpawn > 1 && balls.length < maxBalls) {
+      // ボール出現制御（超シビア設定）
+      if (elapsed - lastSpawn > 0.5 && balls.length < maxBalls) {
         spawnBall(); 
+        lastSpawn = elapsed;
+      }
+      
+      // 強制出現システム：最大数に達していない場合は積極的に出現
+      if (balls.length < maxBalls - 1 && elapsed - lastSpawn > 0.2) {
+        spawnBall();
+        lastSpawn = elapsed;
+      }
+      
+      // 超強制出現：最大数の半分以下なら即座に出現
+      if (balls.length < maxBalls / 2) {
+        spawnBall();
         lastSpawn = elapsed;
       }
       
@@ -389,6 +411,20 @@
       ctx.fillStyle = "red";
       ctx.font = "96px 'Fredoka One'";
       ctx.fillText("♥".repeat(lives), BASE_WIDTH/2, 180);
+      
+      // 難易度デバッグ表示
+      const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
+      ctx.fillStyle = "yellow";
+      ctx.font = "32px 'Fredoka One'";
+      ctx.textAlign = "left";
+      ctx.fillText(`Time: ${elapsed.toFixed(1)}s`, 50, 300);
+      ctx.fillText(`Max Balls: ${maxBalls}`, 50, 340);
+      ctx.fillText(`Current Balls: ${balls.length}`, 50, 380);
+      
+      // 進行表示
+      const nextThreshold = Math.ceil(elapsed / 15) * 15;
+      const nextBalls = Math.min(12, 2 + Math.floor(nextThreshold / 15));
+      ctx.fillText(`Next: ${nextThreshold}s → ${nextBalls} balls`, 50, 420);
     }
 
     function drawTitleScreen() {
