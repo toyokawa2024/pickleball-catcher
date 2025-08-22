@@ -56,14 +56,21 @@
       
       let canvasWidth, canvasHeight;
       
+      // スマホ横画面対応：横幅を優先して調整
       if (windowWidth / windowHeight > ASPECT_RATIO) {
-        // 横が余る場合
+        // 横が余る場合（通常のPC等）
         canvasHeight = windowHeight;
         canvasWidth = canvasHeight * ASPECT_RATIO;
       } else {
-        // 縦が余る場合
+        // 縦が余る場合（スマホ横画面等）- 横幅いっぱいを優先
         canvasWidth = windowWidth;
         canvasHeight = canvasWidth / ASPECT_RATIO;
+        
+        // もし高さが画面を超える場合は高さ基準に戻す
+        if (canvasHeight > windowHeight) {
+          canvasHeight = windowHeight;
+          canvasWidth = canvasHeight * ASPECT_RATIO;
+        }
       }
       
       canvas.width = BASE_WIDTH;
@@ -157,8 +164,8 @@
 
     function clampPaddle() {
       if (paddle.x < 0) paddle.x = 0;
-      if (paddle.x + 225 > BASE_WIDTH) {  // 固定サイズで計算
-        paddle.x = BASE_WIDTH - 225;
+      if (paddle.x + 300 > BASE_WIDTH) {  // パドルサイズ300に合わせて調整
+        paddle.x = BASE_WIDTH - 300;
       }
     }
 
@@ -316,9 +323,9 @@
           addRainbowEffect(ball);
         }
         
-        // 当たり判定（固定サイズで計算）
+        // 当たり判定（パドルサイズ300に合わせて調整）
         if (ball.y + ball.size >= paddle.y &&
-            ball.x + ball.size > paddle.x && ball.x < paddle.x + 225) {
+            ball.x + ball.size > paddle.x && ball.x < paddle.x + 300) {
           score += ballTypes[ball.type].score;
           
           // サウンド再生
@@ -357,18 +364,12 @@
       if (score > highScore) highScore = score;
     }
 
-    // デバッグ用：パドルサイズを画面に表示してテスト
     function draw() {
       // 背景
       ctx.drawImage(bgImg, 0, 0, BASE_WIDTH, BASE_HEIGHT);
       
-      // パドル（テスト用：もっと大きくしてみる）
+      // パドル
       ctx.drawImage(paddleImg, paddle.x, paddle.y, 300, 80);
-      
-      // デバッグ表示：パドルの枠を描画
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(paddle.x, paddle.y, 300, 80);
       
       // ボール
       balls.forEach(ball => {
@@ -388,11 +389,6 @@
       ctx.fillStyle = "red";
       ctx.font = "96px 'Fredoka One'";
       ctx.fillText("♥".repeat(lives), BASE_WIDTH/2, 180);
-      
-      // デバッグ表示：パドルサイズ情報
-      ctx.fillStyle = "yellow";
-      ctx.font = "32px 'Fredoka One'";
-      ctx.fillText("Paddle Size: 300x80 (TEST)", 200, 250);
     }
 
     function drawTitleScreen() {
