@@ -1,14 +1,4 @@
-// ボール出現制御（よりシビアな出現）
-      if (elapsed - lastSpawn > 0.6 && balls.length < maxBalls) {
-        spawnBall(); 
-        lastSpawn = elapsed;
-      }
-      
-      // 追加出現：最大数に達していない場合は強制的に出現
-      if (balls.length < maxBalls - 2 && elapsed - lastSpawn > 0.3) {
-        // 最大数-2個以下なら90%確率で強制出現
-        if (Math.random() < 0.9) {
-          spawnBall<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -120,7 +110,7 @@
     const bgm = new Audio("bgm.mp3"); 
     bgm.loop = true; 
     bgm.volume = 0.2;
-    const catchNormalSound = new Audio("catch_normal.mp3");
+    const catchNormalSound = new Audio("catch_normal.wav");
     const catchRareSound = new Audio("catch_rare.wav");
     const missSound = new Audio("miss.mp3");
     const gameoverSound = new Audio("gameover.mp3");
@@ -208,11 +198,7 @@
       if (gameState === "title") {
         startGame();
       } else if (gameState === "gameover") {
-        // Retryボタンの当たり判定
-        if (coord.x > BASE_WIDTH/2-150 && coord.x < BASE_WIDTH/2+150 &&
-            coord.y > BASE_HEIGHT/2+120 && coord.y < BASE_HEIGHT/2+200) {
-          startGame();
-        }
+        startGame(); // ゲームオーバー画面では画面のどこをクリックしてもリスタート
       }
     });
 
@@ -224,10 +210,7 @@
       if (gameState === "title") {
         startGame();
       } else if (gameState === "gameover") {
-        if (coord.x > BASE_WIDTH/2-150 && coord.x < BASE_WIDTH/2+150 &&
-            coord.y > BASE_HEIGHT/2+120 && coord.y < BASE_HEIGHT/2+200) {
-          startGame();
-        }
+        startGame(); // ゲームオーバー画面では画面のどこをタッチしてもリスタート
       }
     });
 
@@ -343,6 +326,46 @@
       });
     }
 
+    // パドルとボールの当たり判定（外枠のみ、パドル画像の実際の境界に合わせて調整）
+    function checkCollision(ball, paddle) {
+      const ballLeft = ball.x;
+      const ballRight = ball.x + ball.size;
+      const ballTop = ball.y;
+      const ballBottom = ball.y + ball.size;
+      
+      const paddleLeft = paddle.x;
+      const paddleRight = paddle.x + 300; // パドルの幅
+      const paddleTop = paddle.y + 15; // パドル画像の実際の上端（透明部分を除く）
+      const paddleBottom = paddle.y + 80; // パドルの高さ
+      
+      // ボールがパドルの範囲内にあるかチェック
+      if (ballRight < paddleLeft || ballLeft > paddleRight || 
+          ballBottom < paddleTop || ballTop > paddleBottom) {
+        return false;
+      }
+      
+      // 外枠との当たり判定
+      // 上面との当たり判定（パドル画像の実際の境界）
+      if (ballBottom >= paddleTop && ballTop < paddleTop && 
+          ballRight > paddleLeft && ballLeft < paddleRight) {
+        return true;
+      }
+      
+      // 左面との当たり判定
+      if (ballRight >= paddleLeft && ballLeft < paddleLeft && 
+          ballBottom > paddleTop && ballTop < paddleBottom) {
+        return true;
+      }
+      
+      // 右面との当たり判定
+      if (ballLeft <= paddleRight && ballRight > paddleRight && 
+          ballBottom > paddleTop && ballTop < paddleBottom) {
+        return true;
+      }
+      
+      return false;
+    }
+
     function update() {
       if (!startTime) startTime = Date.now();
       const elapsed = (Date.now() - startTime) / 1000;
@@ -372,7 +395,7 @@
         maxBalls = newMaxBalls;
       }
 
-      paddle.y = BASE_HEIGHT - 120;
+      paddle.y = (window.GAME_HEIGHT || BASE_HEIGHT) - 120;
       balls.forEach((ball, i) => {
         ball.y += ballTypes[ball.type].speed;
         
@@ -381,9 +404,8 @@
           addRainbowEffect(ball);
         }
         
-        // 当たり判定（パドルサイズ300に合わせて調整）
-        if (ball.y + ball.size >= paddle.y &&
-            ball.x + ball.size > paddle.x && ball.x < paddle.x + 300) {
+        // 当たり判定（外枠のみ）
+        if (checkCollision(ball, paddle)) {
           score += ballTypes[ball.type].score;
           
           // サウンド再生（スマホ対応改善）
@@ -400,7 +422,7 @@
           }
           
           balls.splice(i, 1);
-        } else if (ball.y > BASE_HEIGHT) {
+        } else if (ball.y > (window.GAME_HEIGHT || BASE_HEIGHT)) {
           // ライフ減少（レインボーは除く）
           if (!ballTypes[ball.type].rare) {
             lives--;
@@ -456,64 +478,53 @@
       ctx.fillStyle = "red";
       ctx.font = "96px 'Fredoka One'";
       ctx.fillText("♥".repeat(lives), BASE_WIDTH/2, 180);
-      
-      // 難易度デバッグ表示
-      const elapsed = startTime ? (Date.now() - startTime) / 1000 : 0;
-      ctx.fillStyle = "yellow";
-      ctx.font = "32px 'Fredoka One'";
-      ctx.textAlign = "left";
-      ctx.fillText(`Time: ${elapsed.toFixed(1)}s`, 50, 300);
-      ctx.fillText(`Max Balls: ${maxBalls}`, 50, 340);
-      ctx.fillText(`Current Balls: ${balls.length}`, 50, 380);
-      
-      // 進行表示
-      const nextThreshold = Math.ceil(elapsed / 15) * 15;
-      const nextBalls = Math.min(12, 2 + Math.floor(nextThreshold / 15));
-      ctx.fillText(`Next: ${nextThreshold}s → ${nextBalls} balls`, 50, 420);
     }
 
     function drawTitleScreen() {
-      ctx.drawImage(titleImg, 0, 0, BASE_WIDTH, BASE_HEIGHT);
+      const gameHeight = window.GAME_HEIGHT || BASE_HEIGHT;
+      ctx.drawImage(titleImg, 0, 0, BASE_WIDTH, gameHeight);
       
       ctx.fillStyle = "#ff66cc"; // ピンク色
       ctx.font = "120px 'Fredoka One'";
       ctx.textAlign = "center";
-      ctx.fillText("Pickleball Catch!", BASE_WIDTH/2, BASE_HEIGHT/2 - 60);
+      ctx.fillText("Pickleball Catch!", BASE_WIDTH/2, gameHeight/2 - 60);
       
       // 点滅効果
       if (Math.floor(Date.now() / 500) % 2 === 0) {
         ctx.fillStyle = "white";
         ctx.font = "64px 'Fredoka One'";
-        ctx.fillText("Tap to Start!", BASE_WIDTH/2, BASE_HEIGHT/2 + 60);
+        ctx.fillText("Tap to Start!", BASE_WIDTH/2, gameHeight/2 + 60);
       }
     }
 
     function drawGameOver() {
+      const gameHeight = window.GAME_HEIGHT || BASE_HEIGHT;
+      
       ctx.fillStyle = "rgba(0,0,0,0.7)";
-      ctx.fillRect(0, 0, BASE_WIDTH, BASE_HEIGHT);
+      ctx.fillRect(0, 0, BASE_WIDTH, gameHeight);
       
       ctx.textAlign = "center";
       
       // GAME OVER
       ctx.fillStyle = "#ff66cc"; // ピンク
       ctx.font = "140px 'Fredoka One'";
-      ctx.fillText("GAME OVER", BASE_WIDTH/2, BASE_HEIGHT/2 - 120);
+      ctx.fillText("GAME OVER", BASE_WIDTH/2, gameHeight/2 - 120);
       
       // スコア
       ctx.fillStyle = "#ff66cc"; // ピンク
       ctx.font = "80px 'Fredoka One'";
-      ctx.fillText("Score: " + score, BASE_WIDTH/2, BASE_HEIGHT/2 - 20);
+      ctx.fillText("Score: " + score, BASE_WIDTH/2, gameHeight/2 - 20);
       
       // ハイスコア
       ctx.fillStyle = "#ffcc00"; // 黄色
-      ctx.fillText("High Score: " + highScore, BASE_WIDTH/2, BASE_HEIGHT/2 + 60);
+      ctx.fillText("High Score: " + highScore, BASE_WIDTH/2, gameHeight/2 + 60);
       
-      // Retryボタン
-      ctx.fillStyle = "#ff66cc";
-      ctx.fillRect(BASE_WIDTH/2 - 150, BASE_HEIGHT/2 + 120, 300, 80);
-      ctx.fillStyle = "white";
-      ctx.font = "48px 'Fredoka One'";
-      ctx.fillText("Retry", BASE_WIDTH/2, BASE_HEIGHT/2 + 175);
+      // タップでリスタートの指示（点滅効果）
+      if (Math.floor(Date.now() / 500) % 2 === 0) {
+        ctx.fillStyle = "white";
+        ctx.font = "48px 'Fredoka One'";
+        ctx.fillText("Tap anywhere to restart", BASE_WIDTH/2, gameHeight/2 + 150);
+      }
     }
 
     function loop() {
