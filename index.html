@@ -105,11 +105,44 @@
     window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
 
-    // サウンド管理
+    // サウンド管理（ファイルパス修正とエラー処理強化）
     let isMuted = false;
-    const bgm = new Audio("bgm.mp3"); 
-    bgm.loop = true; 
-    bgm.volume = 0.2;
+    
+    // BGM設定（複数のファイル形式を試行）
+    const bgm = new Audio();
+    const bgmSources = [
+      "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav", // 仮の音楽ファイル
+      "bgm.mp3",
+      "bgm.wav", 
+      "bgm.ogg"
+    ];
+    
+    // BGMファイルの読み込み試行
+    let bgmLoadIndex = 0;
+    function tryLoadBGM() {
+      if (bgmLoadIndex < bgmSources.length) {
+        bgm.src = bgmSources[bgmLoadIndex];
+        bgm.loop = true;
+        bgm.volume = 0.2;
+        
+        bgm.addEventListener('canplaythrough', function() {
+          bgmDebugInfo = `BGM loaded: ${bgmSources[bgmLoadIndex]}`;
+        }, { once: true });
+        
+        bgm.addEventListener('error', function() {
+          bgmLoadIndex++;
+          if (bgmLoadIndex < bgmSources.length) {
+            bgmDebugInfo = `Trying BGM source ${bgmLoadIndex + 1}/${bgmSources.length}`;
+            tryLoadBGM();
+          } else {
+            bgmDebugInfo = "No BGM files found - playing without music";
+          }
+        }, { once: true });
+      }
+    }
+    
+    tryLoadBGM();
+    
     const catchNormalSound = new Audio("catch_normal.wav");
     const catchRareSound = new Audio("catch_rare.wav");
     const missSound = new Audio("miss.mp3");
@@ -225,25 +258,30 @@
       }
     });
 
-    // ユーザーインタラクション時のBGM再生（デバッグ強化版）
+    // ユーザーインタラクション時のBGM再生（エラー処理強化版）
     function playBGMOnUserInteraction() {
       bgmDebugInfo = `Muted: ${isMuted}, Started: ${bgmStarted}`;
       
       if (!isMuted) {
-        bgm.currentTime = 0;
-        bgmDebugInfo += " - Attempting play";
-        
-        const playPromise = bgm.play();
-        if (playPromise !== undefined) {
-          playPromise.then(() => {
-            bgmStarted = true;
-            bgmDebugInfo = "BGM playing successfully";
-          }).catch(error => {
-            bgmDebugInfo = `BGM failed: ${error.message}`;
-            console.log("BGM play failed:", error);
-          });
+        // BGMファイルが読み込まれているかチェック
+        if (bgm.readyState >= 2) { // HAVE_CURRENT_DATA以上
+          bgm.currentTime = 0;
+          bgmDebugInfo += " - Attempting play";
+          
+          const playPromise = bgm.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              bgmStarted = true;
+              bgmDebugInfo = "BGM playing successfully";
+            }).catch(error => {
+              bgmDebugInfo = `BGM failed: ${error.name}`;
+              console.log("BGM play failed:", error);
+            });
+          } else {
+            bgmDebugInfo = "No play promise returned";
+          }
         } else {
-          bgmDebugInfo = "No play promise returned";
+          bgmDebugInfo = "BGM file not ready - playing without music";
         }
       } else {
         bgmDebugInfo = "BGM muted";
@@ -506,6 +544,12 @@
       ctx.fillStyle = "red";
       ctx.font = "96px 'Fredoka One'";
       ctx.fillText("♥".repeat(lives), BASE_WIDTH/2, 180);
+      
+      // BGMデバッグ情報をゲーム中も表示
+      ctx.fillStyle = "yellow";
+      ctx.font = "20px 'Fredoka One'";
+      ctx.textAlign = "left";
+      ctx.fillText(`BGM: ${bgmDebugInfo}`, 50, gameHeight - 50);
     }
 
     function drawTitleScreen() {
