@@ -183,7 +183,7 @@
       const coord = getCanvasCoordinate(touch.clientX, touch.clientY);
       paddle.x = coord.x - paddle.width / 2;
       clampPaddle();
-    });
+    }, { passive: false });
 
     function clampPaddle() {
       if (paddle.x < 0) paddle.x = 0;
@@ -192,12 +192,18 @@
       }
     }
 
+    // BGM再生用のフラグ
+    let bgmStarted = false;
+
     canvas.addEventListener("click", e => {
+      e.preventDefault();
       const coord = getCanvasCoordinate(e.clientX, e.clientY);
       
       if (gameState === "title") {
+        playBGMOnUserInteraction();
         startGame();
       } else if (gameState === "gameover") {
+        playBGMOnUserInteraction();
         startGame(); // ゲームオーバー画面では画面のどこをクリックしてもリスタート
       }
     });
@@ -208,11 +214,28 @@
       const coord = getCanvasCoordinate(touch.clientX, touch.clientY);
       
       if (gameState === "title") {
+        playBGMOnUserInteraction();
         startGame();
       } else if (gameState === "gameover") {
+        playBGMOnUserInteraction();
         startGame(); // ゲームオーバー画面では画面のどこをタッチしてもリスタート
       }
     });
+
+    // ユーザーインタラクション時のBGM再生
+    function playBGMOnUserInteraction() {
+      if (!bgmStarted && !isMuted) {
+        bgm.currentTime = 0;
+        const playPromise = bgm.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            bgmStarted = true;
+          }).catch(error => {
+            console.log("BGM play failed:", error);
+          });
+        }
+      }
+    }
 
     function startGame() {
       gameState = "playing";
@@ -228,20 +251,12 @@
       gameoverSound.pause();
       gameoverSound.currentTime = 0;
       
-      bgm.currentTime = 0;
-      // スマホでBGMが再生されない問題を解決
-      if (!isMuted) {
-        const playPromise = bgm.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.log("BGM autoplay prevented:", error);
-            // ユーザーインタラクション後に再試行
-            document.addEventListener('touchstart', function playBGM() {
-              bgm.play();
-              document.removeEventListener('touchstart', playBGM);
-            }, { once: true });
-          });
-        }
+      // BGMが既に開始されていれば継続再生
+      if (bgmStarted && !isMuted && bgm.paused) {
+        bgm.currentTime = 0;
+        bgm.play().catch(error => {
+          console.log("BGM restart failed:", error);
+        });
       }
     }
 
@@ -335,7 +350,7 @@
       
       const paddleLeft = paddle.x;
       const paddleRight = paddle.x + 300; // パドルの幅
-      const paddleTop = paddle.y + 15; // パドル画像の実際の上端（透明部分を除く）
+      const paddleTop = paddle.y + 25; // パドル画像の実際の上端（透明部分を除く、さらに下に調整）
       const paddleBottom = paddle.y + 80; // パドルの高さ
       
       // ボールがパドルの範囲内にあるかチェック
