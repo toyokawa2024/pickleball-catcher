@@ -293,14 +293,13 @@
       bgmDebugInfo = "Game starting...";
       
       if (!isMuted && userInteracted) {
-        // BGMが停止している場合は再開
+        // BGMが停止している場合は再開（currentTimeはリセットしない）
         if (bgm.paused) {
-          bgmDebugInfo = "Restarting paused BGM";
-          bgm.currentTime = 0;
+          bgmDebugInfo = "Resuming BGM for new game";
           bgm.play().then(() => {
-            bgmDebugInfo = "BGM restarted in game";
+            bgmDebugInfo = "BGM resumed successfully";
           }).catch(error => {
-            bgmDebugInfo = `BGM restart failed: ${error.name}`;
+            bgmDebugInfo = `BGM resume failed: ${error.name}`;
           });
         } else {
           bgmDebugInfo = "BGM already playing";
@@ -504,7 +503,13 @@
 
     function gameOver() {
       gameState = "gameover";
-      // BGMは停止せずに継続再生
+      
+      // BGMを一時停止（完全停止はしない）
+      if (!bgm.paused) {
+        bgm.pause();
+        bgmDebugInfo = "BGM paused for game over";
+      }
+      
       if (!isMuted) {
         gameoverSound.currentTime = 0; 
         gameoverSound.play();
@@ -564,12 +569,14 @@
         ctx.fillText("Tap to Start!", BASE_WIDTH/2, gameHeight/2 + 60);
       }
       
-      // BGMデバッグ情報表示
+      // BGMデバッグ情報表示（詳細版）
       ctx.fillStyle = "yellow";
-      ctx.font = "24px 'Fredoka One'";
+      ctx.font = "20px 'Fredoka One'";
       ctx.textAlign = "left";
       ctx.fillText(`BGM Status: ${bgmDebugInfo}`, 50, 50);
-      ctx.fillText(`Mute Button: ${isMuted ? 'Muted' : 'Unmuted'}`, 50, 80);
+      ctx.fillText(`User Interacted: ${userInteracted}`, 50, 75);
+      ctx.fillText(`BGM Paused: ${bgm.paused}`, 50, 100);
+      ctx.fillText(`Muted: ${isMuted}`, 50, 125);
     }
 
     function drawGameOver() {
