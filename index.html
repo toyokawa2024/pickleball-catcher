@@ -119,7 +119,17 @@
     muteBtn.addEventListener("click", () => {
       isMuted = !isMuted;
       muteBtn.textContent = isMuted ? "🔇" : "🔊";
-      bgm.muted = isMuted;
+      
+      if (isMuted) {
+        bgm.pause();
+        bgmDebugInfo = "BGM muted by user";
+      } else {
+        if (userInteracted) {
+          startBGM();
+        }
+      }
+      
+      // 他の音声もミュート設定
       catchNormalSound.muted = isMuted;
       catchRareSound.muted = isMuted;
       missSound.muted = isMuted;
@@ -193,68 +203,77 @@
       }
     }
 
-    // BGM再生用のフラグとデバッグ情報
-    let bgmStarted = false;
-    let bgmDebugInfo = "BGM not started";
+    // BGM管理用変数
+    let userInteracted = false;
+    let bgmDebugInfo = "BGM waiting for interaction";
 
-    canvas.addEventListener("click", e => {
-      e.preventDefault();
-      bgmDebugInfo = "Click detected";
-      const coord = getCanvasCoordinate(e.clientX, e.clientY);
-      
-      if (gameState === "title") {
-        playBGMOnUserInteraction();
-        startGame();
-      } else if (gameState === "gameover") {
-        playBGMOnUserInteraction();
-        startGame(); // ゲームオーバー画面では画面のどこをクリックしてもリスタート
-      }
-    });
-
-    canvas.addEventListener("touchstart", e => {
-      e.preventDefault();
-      bgmDebugInfo = "Touch detected";
-      const touch = e.touches[0];
-      const coord = getCanvasCoordinate(touch.clientX, touch.clientY);
-      
-      if (gameState === "title") {
-        playBGMOnUserInteraction();
-        startGame();
-      } else if (gameState === "gameover") {
-        playBGMOnUserInteraction();
-        startGame(); // ゲームオーバー画面では画面のどこをタッチしてもリスタート
-      }
-    });
-
-    // ユーザーインタラクション時のBGM再生（エラー処理強化版）
-    function playBGMOnUserInteraction() {
-      bgmDebugInfo = `Muted: ${isMuted}, Started: ${bgmStarted}`;
-      
+    // BGM開始関数（確実に再生）
+    function startBGM() {
       if (!isMuted) {
-        // BGMファイルが読み込まれているかチェック
-        if (bgm.readyState >= 2) { // HAVE_CURRENT_DATA以上
-          bgm.currentTime = 0;
-          bgmDebugInfo += " - Attempting play";
-          
-          const playPromise = bgm.play();
-          if (playPromise !== undefined) {
-            playPromise.then(() => {
-              bgmStarted = true;
-              bgmDebugInfo = "BGM playing successfully";
-            }).catch(error => {
-              bgmDebugInfo = `BGM failed: ${error.name}`;
-              console.log("BGM play failed:", error);
-            });
-          } else {
-            bgmDebugInfo = "No play promise returned";
-          }
-        } else {
-          bgmDebugInfo = "BGM file not ready - playing without music";
+        bgmDebugInfo = "Starting BGM...";
+        bgm.currentTime = 0;
+        
+        // 強制的にBGM再生を試行
+        const playPromise = bgm.play();
+        if (playPromise !== undefined) {
+          playPromise.then(() => {
+            bgmDebugInfo = "BGM playing successfully";
+            console.log("BGM started successfully");
+          }).catch(error => {
+            bgmDebugInfo = `BGM error: ${error.name}`;
+            console.log("BGM failed:", error);
+            
+            // 短時間後に再試行
+            setTimeout(() => {
+              bgm.play().then(() => {
+                bgmDebugInfo = "BGM retry successful";
+              }).catch(() => {
+                bgmDebugInfo = "BGM retry failed";
+              });
+            }, 200);
+          });
         }
       } else {
         bgmDebugInfo = "BGM muted";
       }
     }
+
+    canvas.addEventListener("click", e => {
+      e.preventDefault();
+      
+      if (!userInteracted) {
+        userInteracted = true;
+        bgmDebugInfo = "First click - starting BGM";
+        startBGM();
+      }
+      
+      const coord = getCanvasCoordinate(e.clientX, e.clientY);
+      
+      if (gameState === "title") {
+        startGame();
+      } else if (gameState === "gameover") {
+        startGame();
+      }
+    });
+
+    canvas.addEventListener("touchstart", e => {
+      e.preventDefault();
+      
+      if (!userInteracted) {
+        userInteracted = true;
+        bgmDebugInfo = "First touch - starting BGM";
+        startBGM();
+      }
+      
+      const touch = e.touches[0];
+      const coord = getCanvasCoordinate(touch.clientX, touch.clientY);
+      
+      if (gameState === "title") {
+        startGame();
+      } else if (gameState === "gameover") {
+        startGame();
+      }
+    });
 
     function startGame() {
       gameState = "playing";
@@ -270,12 +289,22 @@
       gameoverSound.pause();
       gameoverSound.currentTime = 0;
       
-      // BGMが既に開始されていれば継続再生
-      if (bgmStarted && !isMuted && bgm.paused) {
-        bgm.currentTime = 0;
-        bgm.play().catch(error => {
-          console.log("BGM restart failed:", error);
-        });
+      // ゲーム開始時にBGM状態確認・再生
+      bgmDebugInfo = "Game starting...";
+      
+      if (!isMuted && userInteracted) {
+        // BGMが停止している場合は再開
+        if (bgm.paused) {
+          bgmDebugInfo = "Restarting paused BGM";
+          bgm.currentTime = 0;
+          bgm.play().then(() => {
+            bgmDebugInfo = "BGM restarted in game";
+          }).catch(error => {
+            bgmDebugInfo = `BGM restart failed: ${error.name}`;
+          });
+        } else {
+          bgmDebugInfo = "BGM already playing";
+        }
       }
     }
 
@@ -475,8 +504,7 @@
 
     function gameOver() {
       gameState = "gameover";
-      bgm.pause(); 
-      bgm.currentTime = 0;
+      // BGMは停止せずに継続再生
       if (!isMuted) {
         gameoverSound.currentTime = 0; 
         gameoverSound.play();
