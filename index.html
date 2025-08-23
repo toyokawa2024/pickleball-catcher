@@ -192,11 +192,13 @@
       }
     }
 
-    // BGM再生用のフラグ
+    // BGM再生用のフラグとデバッグ情報
     let bgmStarted = false;
+    let bgmDebugInfo = "BGM not started";
 
     canvas.addEventListener("click", e => {
       e.preventDefault();
+      bgmDebugInfo = "Click detected";
       const coord = getCanvasCoordinate(e.clientX, e.clientY);
       
       if (gameState === "title") {
@@ -210,6 +212,7 @@
 
     canvas.addEventListener("touchstart", e => {
       e.preventDefault();
+      bgmDebugInfo = "Touch detected";
       const touch = e.touches[0];
       const coord = getCanvasCoordinate(touch.clientX, touch.clientY);
       
@@ -222,18 +225,28 @@
       }
     });
 
-    // ユーザーインタラクション時のBGM再生
+    // ユーザーインタラクション時のBGM再生（デバッグ強化版）
     function playBGMOnUserInteraction() {
-      if (!bgmStarted && !isMuted) {
+      bgmDebugInfo = `Muted: ${isMuted}, Started: ${bgmStarted}`;
+      
+      if (!isMuted) {
         bgm.currentTime = 0;
+        bgmDebugInfo += " - Attempting play";
+        
         const playPromise = bgm.play();
         if (playPromise !== undefined) {
           playPromise.then(() => {
             bgmStarted = true;
+            bgmDebugInfo = "BGM playing successfully";
           }).catch(error => {
+            bgmDebugInfo = `BGM failed: ${error.message}`;
             console.log("BGM play failed:", error);
           });
+        } else {
+          bgmDebugInfo = "No play promise returned";
         }
+      } else {
+        bgmDebugInfo = "BGM muted";
       }
     }
 
@@ -510,6 +523,13 @@
         ctx.font = "64px 'Fredoka One'";
         ctx.fillText("Tap to Start!", BASE_WIDTH/2, gameHeight/2 + 60);
       }
+      
+      // BGMデバッグ情報表示
+      ctx.fillStyle = "yellow";
+      ctx.font = "24px 'Fredoka One'";
+      ctx.textAlign = "left";
+      ctx.fillText(`BGM Status: ${bgmDebugInfo}`, 50, 50);
+      ctx.fillText(`Mute Button: ${isMuted ? 'Muted' : 'Unmuted'}`, 50, 80);
     }
 
     function drawGameOver() {
