@@ -122,10 +122,11 @@
       
       if (isMuted) {
         bgm.pause();
-        bgmDebugInfo = "BGM muted by user";
       } else {
-        if (userInteracted) {
-          startBGM();
+        if (userInteracted && gameState === "playing") {
+          bgm.play().catch(() => {
+            console.log("BGM unmute failed");
+          });
         }
       }
       
@@ -205,36 +206,29 @@
 
     // BGM管理用変数
     let userInteracted = false;
-    let bgmDebugInfo = "BGM waiting for interaction";
+    let gameStarted = false; // ゲーム開始フラグ追加
 
     // BGM開始関数（確実に再生）
     function startBGM() {
       if (!isMuted) {
-        bgmDebugInfo = "Starting BGM...";
         bgm.currentTime = 0;
         
         // 強制的にBGM再生を試行
         const playPromise = bgm.play();
         if (playPromise !== undefined) {
           playPromise.then(() => {
-            bgmDebugInfo = "BGM playing successfully";
             console.log("BGM started successfully");
           }).catch(error => {
-            bgmDebugInfo = `BGM error: ${error.name}`;
             console.log("BGM failed:", error);
             
             // 短時間後に再試行
             setTimeout(() => {
-              bgm.play().then(() => {
-                bgmDebugInfo = "BGM retry successful";
-              }).catch(() => {
-                bgmDebugInfo = "BGM retry failed";
+              bgm.play().catch(() => {
+                console.log("BGM retry failed");
               });
             }, 200);
           });
         }
-      } else {
-        bgmDebugInfo = "BGM muted";
       }
     }
 
@@ -243,7 +237,6 @@
       
       if (!userInteracted) {
         userInteracted = true;
-        bgmDebugInfo = "First click - starting BGM";
         startBGM();
       }
       
@@ -261,7 +254,6 @@
       
       if (!userInteracted) {
         userInteracted = true;
-        bgmDebugInfo = "First touch - starting BGM";
         startBGM();
       }
       
@@ -284,25 +276,18 @@
       maxBalls = 2;
       startTime = Date.now();
       lastSpawn = 0;
+      gameStarted = true; // ゲーム開始マーク
       
       // ゲームオーバーサウンドを停止
       gameoverSound.pause();
       gameoverSound.currentTime = 0;
       
-      // ゲーム開始時にBGM状態確認・再生
-      bgmDebugInfo = "Game starting...";
-      
+      // ゲーム開始時にBGM再開
       if (!isMuted && userInteracted) {
-        // BGMが停止している場合は再開（currentTimeはリセットしない）
         if (bgm.paused) {
-          bgmDebugInfo = "Resuming BGM for new game";
-          bgm.play().then(() => {
-            bgmDebugInfo = "BGM resumed successfully";
-          }).catch(error => {
-            bgmDebugInfo = `BGM resume failed: ${error.name}`;
+          bgm.play().catch(error => {
+            console.log("BGM resume failed:", error);
           });
-        } else {
-          bgmDebugInfo = "BGM already playing";
         }
       }
     }
@@ -388,15 +373,15 @@
       });
     }
 
-    // パドルとボールの当たり判定（外枠のみ、パドル画像の実際の境界に合わせて調整）
+    // パドルとボールの当たり判定（外枠のみ、左右の判定を狭める）
     function checkCollision(ball, paddle) {
       const ballLeft = ball.x;
       const ballRight = ball.x + ball.size;
       const ballTop = ball.y;
       const ballBottom = ball.y + ball.size;
       
-      const paddleLeft = paddle.x;
-      const paddleRight = paddle.x + 300; // パドルの幅
+      const paddleLeft = paddle.x + 30; // 左端を30px内側に
+      const paddleRight = paddle.x + 270; // 右端を30px内側に（300-30=270）
       const paddleTop = paddle.y + 25; // パドル画像の実際の上端（透明部分を除く、さらに下に調整）
       const paddleBottom = paddle.y + 80; // パドルの高さ
       
@@ -504,10 +489,9 @@
     function gameOver() {
       gameState = "gameover";
       
-      // BGMを一時停止（完全停止はしない）
-      if (!bgm.paused) {
+      // ゲームが開始されていて、BGMが再生中なら停止
+      if (gameStarted && !bgm.paused) {
         bgm.pause();
-        bgmDebugInfo = "BGM paused for game over";
       }
       
       if (!isMuted) {
@@ -545,12 +529,6 @@
       ctx.fillStyle = "red";
       ctx.font = "96px 'Fredoka One'";
       ctx.fillText("♥".repeat(lives), BASE_WIDTH/2, 180);
-      
-      // BGMデバッグ情報をゲーム中も表示
-      ctx.fillStyle = "yellow";
-      ctx.font = "20px 'Fredoka One'";
-      ctx.textAlign = "left";
-      ctx.fillText(`BGM: ${bgmDebugInfo}`, 50, gameHeight - 50);
     }
 
     function drawTitleScreen() {
@@ -568,15 +546,6 @@
         ctx.font = "64px 'Fredoka One'";
         ctx.fillText("Tap to Start!", BASE_WIDTH/2, gameHeight/2 + 60);
       }
-      
-      // BGMデバッグ情報表示（詳細版）
-      ctx.fillStyle = "yellow";
-      ctx.font = "20px 'Fredoka One'";
-      ctx.textAlign = "left";
-      ctx.fillText(`BGM Status: ${bgmDebugInfo}`, 50, 50);
-      ctx.fillText(`User Interacted: ${userInteracted}`, 50, 75);
-      ctx.fillText(`BGM Paused: ${bgm.paused}`, 50, 100);
-      ctx.fillText(`Muted: ${isMuted}`, 50, 125);
     }
 
     function drawGameOver() {
